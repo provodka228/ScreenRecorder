@@ -1,0 +1,152 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 20px;
+    color: #333; /* Цвет текста для контраста с фоном */
+
+    /* Добавленные стили для фонового изображения */
+    background-image: url('https://newtort.ru/wp-content/uploads/2023/11/20230912_195312.jpg'); /* Используем вашу ссылку */
+    background-repeat: no-repeat; /* Изображение не будет повторяться */
+    background-position: center center; /* Центрировать изображение */
+    background-size: cover; /* Растянуть изображение, чтобы оно покрыло весь фон */
+    background-attachment: fixed; /* Фон не будет прокручиваться при прокрутке страницы */
+}
+
+/* Возможно, вам также потребуется добавить полупрозрачный фон для контейнера,
+   чтобы текст был лучше виден на фоне картинки */
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    background-color: rgba(255, 255, 255, 0.8); /* Белый полупрозрачный фон (80% непрозрачности) */
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+/* Остальные стили из предыдущего примера остаются без изменений */
+h1 {
+    color: #2c3e50;
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.control-group {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border-radius: 5px;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+select, input[type="range"] {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.button-group {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+button {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.3s;
+}
+
+#btnStart {
+    background-color: #27ae60;
+    color: white;
+}
+
+#btnStart:hover {
+    background-color: #2ecc71;
+}
+
+#btnStop {
+    background-color: #e74c3c;
+    color: white;
+}
+
+#btnStop:hover {
+    background-color: #c0392b;
+}
+
+#btnSettings, #btnHelp {
+    background-color: #3498db;
+    color: white;
+}
+
+#btnSettings:hover, #btnHelp:hover {
+    background-color: #2980b9;
+}
+
+.status {
+    margin-top: 20px;
+    padding: 10px;
+    text-align: center;
+    font-weight: bold;
+    border-radius: 4px;
+}
+
+.recording {
+    background-color: #ffeaa7;
+}
+
+.paused {
+    background-color: #fab1a0;
+}
+
+.ready {
+    background-color: #55efc4;
+}
+
+#timer {
+    font-family: monospace;
+    font-size: 24px;
+    text-align: center;
+    margin: 20px 0;
+}
+
+#preview {
+    width: 100%;
+    max-height: 400px;
+    background-color: #333;
+    margin-top: 20px;
+    border-radius: 4px;
+}
+
+#regionSelectionOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    z-index: 1000;
+    cursor: crosshair;
+}
+
+#selectionRectangle {
+    position: absolute;
+    border: 2px dashed red;
+    background-color: rgba(255,0,0,0.2);
+}
+
+.hotkey-info {
+    margin-top: 30px;
+    font-size: 0.9em;
+    color: #7f8c8d;
+}
