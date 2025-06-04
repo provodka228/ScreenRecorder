@@ -433,16 +433,29 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function handleHotkeys(e) {
+        // Игнорируем горячие клавиши, если фокус находится на поле ввода
+        const activeElement = document.activeElement;
+        if (activeElement.tagName === 'INPUT' || activeElement.tagName === 'SELECT' || activeElement.tagName === 'TEXTAREA') {
+            return;
+        }
+
         if (e.altKey) {
-            if (e.key === 'r') {
-                e.preventDefault();
-                toggleRecording();
-            } else if (e.key === 's' && isRecording && !isPaused) {
-                e.preventDefault();
-                pauseRecording();
-            } else if (e.key === 't' && isRecording) {
-                e.preventDefault();
-                stopRecording();
+            e.preventDefault(); // Предотвращаем стандартное поведение браузера
+            
+            switch(e.code) {
+                case 'KeyR': // Alt+R - Начать/Продолжить запись
+                    toggleRecording();
+                    break;
+                case 'KeyS': // Alt+S - Пауза записи
+                    if (isRecording && !isPaused) {
+                        pauseRecording();
+                    }
+                    break;
+                case 'KeyT': // Alt+T - Остановить запись
+                    if (isRecording) {
+                        stopRecording();
+                    }
+                    break;
             }
         } else if (e.key === 'Escape' && regionOverlay.style.display === 'block') {
             e.preventDefault();
