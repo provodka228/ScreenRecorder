@@ -1,8 +1,9 @@
-
 // Глобальные переменные
 let mediaRecorder;
 let recordedChunks = [];
 let recordingStartTime;
+let pauseStartTime;
+let totalPausedTime = 0;
 let timerInterval;
 let isRecording = false;
 let isPaused = false;
@@ -60,6 +61,7 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const videoSource = videoSourceSelect.value;
             const audioSource = audioSourceSelect.value;
+            
             console.log("Начало процесса записи...");
             statusDisplay.textContent = 'Запрашиваем доступ к медиа...';
             statusDisplay.className = 'status pending';
@@ -67,8 +69,8 @@ document.addEventListener('DOMContentLoaded', function() {
             // 1. Получаем видеопоток с экрана
             const displayMediaConstraints = {
                 video: {
-                    mediaSource: videoSource === 'screen' ? 'screen' :
-                               videoSource === 'window' ? 'window' : 'screen'
+                    mediaSource: videoSource === 'screen' ? 'screen' : 
+                              videoSource === 'window' ? 'window' : 'screen'
                 },
                 audio: audioSource === 'system' || audioSource === 'both'
             };
@@ -89,7 +91,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if ((audioSource === 'mic' || audioSource === 'both') && navigator.mediaDevices.getUserMedia) {
                 try {
                     console.log("Запрашиваем доступ к микрофону...");
-                    micStream = await navigator.mediaDevices.getUserMedia({
+                    micStream = await navigator.mediaDevices.getUserMedia({ 
                         audio: {
                             echoCancellation: true,
                             noiseSuppression: true,
@@ -106,7 +108,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // 3. Создаем объединенный поток
             const combinedStream = new MediaStream();
-
+            
             // Добавляем видеодорожку
             screenStream.getVideoTracks().forEach(track => {
                 combinedStream.addTrack(track);
@@ -147,8 +149,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if (supportedTypes.length > 0) {
                 mimeType = supportedTypes[0];
             }
-            console.log(`Используем MIME type: ${mimeType}`);
 
+            console.log(`Используем MIME type: ${mimeType}`);
 
             // 5. Создаем MediaRecorder
             recordedChunks = [];
@@ -198,6 +200,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     currentStream.getTracks().forEach(track => track.stop());
                 }
                 currentStream = null;
+
                 timerDisplay.textContent = '00:00:00';
                 updateUI();
                 statusDisplay.textContent = 'Запись завершена';
@@ -210,19 +213,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 stopRecording();
             };
 
-
             currentStream = combinedStream;
+
             console.log("Запуск MediaRecorder...");
             mediaRecorder.start(1000); // Собираем данные каждую секунду
 
             isRecording = true;
             isPaused = false;
             recordingStartTime = Date.now();
+            totalPausedTime = 0; // Сбрасываем счетчик пауз
             timerInterval = setInterval(updateTimer, 1000);
-            updateTimer(); // Обновить таймер сразу при старте
+            updateTimer();
             updateUI();
             statusDisplay.textContent = 'Идет запись...';
             statusDisplay.className = 'status recording';
+
             console.log("Запись успешно начата");
 
         } catch (error) {
@@ -232,9 +237,8 @@ document.addEventListener('DOMContentLoaded', function() {
             } else if (error.name === 'NotFoundError') {
                 alert("Не найдены доступные источники для записи экрана или микрофона.");
             } else if (error.name === 'AbortError') {
-                 alert("Запрос на доступ к медиа был отклонен или захват был прекращен преждевременно.");
-            }
-            else {
+                alert("Запрос на доступ к медиа был отклонен или захват был прекращен преждевременно.");
+            } else {
                 alert(`Ошибка при начале записи: ${error.message}`);
             }
             updateUI();
@@ -249,27 +253,49 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function pauseRecording() {
         if (!isRecording || isPaused) return;
+        
+        console.log("Приостановка записи...");
         isPaused = true;
+        pauseStartTime = Date.now();
         clearInterval(timerInterval);
-        if (mediaRecorder && mediaRecorder.state === 'recording') {
-             console.log("Приостановка записи...");
-            mediaRecorder.pause();
-            statusDisplay.textContent = 'Запись приостановлена';
-            statusDisplay.className = 'status paused';
+        
+        try {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                // Сохраняем последние данные перед паузой
+                mediaRecorder.requestData();
+                mediaRecorder.pause();
+                console.log("MediaRecorder успешно приостановлен");
+            }
+        } catch (e) {
+            console.error("Ошибка при приостановке MediaRecorder:", e);
         }
+        
+        statusDisplay.textContent = 'Запись приостановлена';
+        statusDisplay.className = 'status paused';
         updateUI();
     }
 
     function resumeRecording() {
         if (!isRecording || !isPaused) return;
+        
+        console.log("Возобновление записи...");
         isPaused = false;
-        timerInterval = setInterval(updateTimer, 1000);
-        if (mediaRecorder && mediaRecorder.state === 'paused') {
-             console.log("Возобновление записи...");
-            mediaRecorder.resume();
-            statusDisplay.textContent = 'Идет запись...';
-            statusDisplay.className = 'status recording';
+        
+        // Рассчитываем общее время паузы
+        totalPausedTime += Date.now() - pauseStartTime;
+        
+        try {
+            if (mediaRecorder && mediaRecorder.state === 'paused') {
+                mediaRecorder.resume();
+                console.log("MediaRecorder успешно возобновлен");
+            }
+        } catch (e) {
+            console.error("Ошибка при возобновлении MediaRecorder:", e);
         }
+        
+        timerInterval = setInterval(updateTimer, 1000);
+        statusDisplay.textContent = 'Идет запись...';
+        statusDisplay.className = 'status recording';
         updateUI();
     }
 
@@ -280,13 +306,14 @@ document.addEventListener('DOMContentLoaded', function() {
         clearInterval(timerInterval);
         timerDisplay.textContent = '00:00:00';
         updateUI();
-         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-             console.log("Остановка записи...");
+
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            console.log("Остановка записи...");
             mediaRecorder.stop();
         } else {
             console.log("MediaRecorder не активен для остановки.");
-            recordedChunks = []; // Сбросить чанки, если MediaRecorder неактивен
-             if (currentStream) {
+            recordedChunks = [];
+            if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
             }
             currentStream = null;
@@ -296,9 +323,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-
     function updateTimer() {
-        const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+        if (isPaused) return; // Не обновляем таймер во время паузы
+        
+        const elapsed = Math.floor((Date.now() - recordingStartTime - totalPausedTime) / 1000);
         const hours = Math.floor(elapsed / 3600).toString().padStart(2, '0');
         const minutes = Math.floor((elapsed % 3600) / 60).toString().padStart(2, '0');
         const seconds = (elapsed % 60).toString().padStart(2, '0');
@@ -306,34 +334,28 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateUI() {
-        const isActivelyRecording = isRecording && !isPaused;
-
         if (isRecording) {
             if (isPaused) {
                 btnStart.textContent = 'Продолжить запись';
             } else {
                 btnStart.textContent = 'Пауза записи';
             }
-            btnStop.disabled = false; // Кнопка стоп активна только когда запись началась
+            btnStop.disabled = false;
         } else {
             btnStart.textContent = 'Начать запись';
             btnStop.disabled = true;
-            previewVideo.style.display = 'none'; // Скрыть превью, когда не записывается
+            previewVideo.style.display = 'none';
         }
 
-        // Отключаем элементы управления во время активной записи
+        const isActivelyRecording = isRecording && !isPaused;
         videoSourceSelect.disabled = isActivelyRecording;
         resolutionSelect.disabled = isActivelyRecording;
         fpsSelect.disabled = isActivelyRecording;
         audioSourceSelect.disabled = isActivelyRecording;
         volumeSlider.disabled = isActivelyRecording;
 
-        // Управление состоянием кнопки Start/Pause/Resume
-        // Если идет активная запись, кнопка "Начать" становится "Пауза" и должна быть активна, чтобы нажать паузу
-        // Если запись приостановлена, кнопка "Пауза" становится "Продолжить" и должна быть активна
-        // Если запись остановлена, кнопка "Стоп" неактивна, а "Начать" активна
-         btnStart.disabled = !isRecording && !isPaused ? false : false; // Всегда активна, текст меняется
-         btnStop.disabled = !isRecording; // Неактивна, если не идет запись
+        btnStart.disabled = false; // Всегда активна (меняется только текст)
+        btnStop.disabled = !isRecording;
 
         if (statusDisplay.className !== 'status pending' && statusDisplay.className !== 'status error') {
             if (isRecording) {
@@ -349,17 +371,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // Функции выбора области (заглушки)
     function showRegionSelectionOverlay() {
         regionOverlay.style.display = 'block';
-        // Добавьте слушатели событий для мыши здесь, чтобы они работали только когда оверлей виден
     }
 
     function startRegionSelection(e) {
-        if (e.target !== regionOverlay) return; // Убедиться, что клик был по оверлею, а не по элементам внутри
+        if (e.target !== regionOverlay) return;
         selectionStart = { x: e.clientX, y: e.clientY };
         selectionRectangle.style.left = `${e.clientX}px`;
         selectionRectangle.style.top = `${e.clientY}px`;
         selectionRectangle.style.width = '0px';
         selectionRectangle.style.height = '0px';
-        selectionRectangle.style.display = 'block'; // Показать прямоугольник при начале выделения
     }
 
     function updateRegionSelection(e) {
@@ -368,7 +388,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const height = Math.abs(e.clientY - selectionStart.y);
         const left = Math.min(e.clientX, selectionStart.x);
         const top = Math.min(e.clientY, selectionStart.y);
-
         selectionRectangle.style.left = `${left}px`;
         selectionRectangle.style.top = `${top}px`;
         selectionRectangle.style.width = `${width}px`;
@@ -377,13 +396,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function endRegionSelection(e) {
         if (!selectionStart) return;
-
         const width = Math.abs(e.clientX - selectionStart.x);
         const height = Math.abs(e.clientY - selectionStart.y);
-
-        selectionRectangle.style.display = 'none'; // Скрыть прямоугольник после выделения
-
-        if (width > 10 && height > 10) { // Простая проверка на минимальный размер
+        if (width > 10 && height > 10) {
             selectedRegion = {
                 x: Math.min(e.clientX, selectionStart.x),
                 y: Math.min(e.clientY, selectionStart.y),
@@ -391,23 +406,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 height: height
             };
             alert(`Выбрана область: ${width}x${height} at (${selectedRegion.x},${selectedRegion.y}).\n\nЗапись выбранной области пока не реализована.`);
-             // Здесь можно было бы обновить UI или начать запись выбранной области
         } else {
             alert("Выбранная область слишком мала.");
-            selectedRegion = null; // Сбросить выбранную область
         }
-
         selectionStart = null;
-        regionOverlay.style.display = 'none'; // Скрыть оверлей
-         // Удалите слушатели событий для мыши здесь, чтобы они не работали, когда оверлей скрыт
+        regionOverlay.style.display = 'none';
     }
 
-    // Слушатели событий для выделения области (только когда оверлей виден)
-    // Лучше добавлять и удалять их динамически при показе/скрытии оверлея
-     regionOverlay.addEventListener('mousedown', startRegionSelection);
-     regionOverlay.addEventListener('mousemove', updateRegionSelection);
-     regionOverlay.addEventListener('mouseup', endRegionSelection);
-
+    regionOverlay.addEventListener('mousedown', startRegionSelection);
+    regionOverlay.addEventListener('mousemove', updateRegionSelection);
+    regionOverlay.addEventListener('mouseup', endRegionSelection);
 
     function showSettings() {
         alert("Настройки пока не реализованы.");
@@ -425,19 +433,14 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function handleHotkeys(e) {
-        // Игнорируем горячие клавиши, если фокус находится на поле ввода
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
-            return;
-        }
-
         if (e.altKey) {
-            if (e.code === 'KeyR') { // Alt + R (Старт/Продолжить)
-                e.preventDefault(); // Предотвратить действие браузера по умолчанию
+            if (e.key === 'r') {
+                e.preventDefault();
                 toggleRecording();
-            } else if (e.code === 'KeyS' && isRecording && !isPaused) { // Alt + S (Пауза)
+            } else if (e.key === 's' && isRecording && !isPaused) {
                 e.preventDefault();
                 pauseRecording();
-            } else if (e.code === 'KeyT' && isRecording) { // Alt + T (Стоп)
+            } else if (e.key === 't' && isRecording) {
                 e.preventDefault();
                 stopRecording();
             }
@@ -445,16 +448,13 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             regionOverlay.style.display = 'none';
             selectionStart = null;
-             selectionRectangle.style.width = '0px';
-             selectionRectangle.style.height = '0px';
-             selectionRectangle.style.display = 'none'; // Скрыть прямоугольник
         }
     }
 
     resolutionSelect.addEventListener('change', function() {
         if (resolutionSelect.value === 'custom') {
             alert("Пользовательское разрешение пока не реализовано.");
-            resolutionSelect.value = '1920x1080'; // Возвращаем к стандартному значению
+            resolutionSelect.value = '1920x1080';
         }
     });
 
@@ -462,9 +462,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (videoSourceSelect.value === 'region') {
             alert("Выбор произвольной области пока не реализована.");
             showRegionSelectionOverlay();
-            videoSourceSelect.value = 'screen'; // Возвращаем к стандартному значению
+            videoSourceSelect.value = 'screen';
         }
     });
-
 });
-
