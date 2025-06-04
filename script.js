@@ -1,15 +1,15 @@
 // Глобальные переменные
-let mediaRecorder; // Этот объект больше не используется напрямую на странице, но оставлен для совместимости
-let recordedChunks = []; // Эти данные больше не собираются на странице
+let mediaRecorder;
+let recordedChunks = [];
 let recordingStartTime;
 let timerInterval;
-let isRecording = false; // Отслеживает статус записи, инициированной через расширение
-let isPaused = false; // Отслеживает статус паузы, инициированной через расширение
+let isRecording = false;
+let isPaused = false;
 
-let selectedRegion = null; // Для выбора области (пока не реализовано через расширение)
-let selectionStart = null; // Для выбора области (пока не реализовано через расширение)
+let selectedRegion = null; // Для выбора области
+let selectionStart = null; // Для выбора области
 
-let currentStream; // Этот объект больше не используется напрямую на странице
+let currentStream; // Для хранения текущего медиапотока
 
 // Элементы DOM
 const videoSourceSelect = document.getElementById('videoSource');
@@ -37,117 +37,9 @@ document.addEventListener('keydown', handleHotkeys); // Обработка го�
 // Инициализация
 updateUI();
 
-// --- Взаимодействие с расширением браузера ---
+// --- Основные функции записи (без расширения) ---
 
-// Слушатель сообщений от расширения
-if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
-    chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
-        console.log("Сообщение получено на странице:", request);
-
-        if (request.action === "recordingStarted") {
-            // Расширение сообщило об успешном начале записи
-            console.log("Запись успешно начата через расширение.");
-            isRecording = true;
-            isPaused = false; // Считаем, что запись началась без паузы
-            recordingStartTime = Date.now();
-            timerInterval = setInterval(updateTimer, 1000);
-            updateTimer(); // Обновить таймер сразу
-            updateUI();
-            statusDisplay.textContent = 'Идет запись... (через расширение)';
-            statusDisplay.className = 'status recording';
-
-        } else if (request.action === "recordingStopped") {
-            // Расширение сообщило об остановке записи
-            console.log("Запись остановлена расширением. URL для скачивания:", request.downloadUrl);
-
-            // Обработка файла для скачивания на стороне страницы
-            const url = request.downloadUrl;
-            if (url) {
-                 previewVideo.src = url;
-                 previewVideo.style.display = 'block'; // Показать предпросмотр
-
-                 // Создать ссылку для скачивания и кликнуть по ней
-                 const a = document.createElement('a');
-                 a.style.display = 'none';
-                 a.href = url;
-                 a.download = `screen_record_${new Date().toISOString().replace(/[:.]/g, '-')}.webm`; // Имя файла
-                 document.body.appendChild(a);
-                 a.click();
-
-                 // Очистка после скачивания
-                 setTimeout(() => {
-                     document.body.removeChild(a);
-                     window.URL.revokeObjectURL(url);
-                 }, 100);
-            }
-
-            // Обновить UI страницы после остановки записи
-            isRecording = false;
-            isPaused = false;
-            clearInterval(timerInterval);
-            timerDisplay.textContent = '00:00:00';
-            updateUI(); // Убедитесь, что updateUI правильно сбрасывает состояние
-            statusDisplay.textContent = 'Запись завершена';
-            statusDisplay.className = 'status ready'; // Или другой класс для завершения записи
-
-        } else if (request.action === "recordingPaused") {
-            // Расширение сообщило о паузе записи
-            console.log("Запись приостановлена расширением.");
-            isPaused = true;
-            clearInterval(timerInterval);
-            updateUI();
-            statusDisplay.textContent = 'Запись приостановлена (через расширение)';
-            statusDisplay.className = 'status paused';
-
-        } else if (request.action === "recordingResumed") {
-             // Расширение сообщило о возобновлении записи
-             console.log("Запись возобновлена расширением.");
-             isPaused = false;
-             // Возможно, нужно скорректировать время начала записи для точного таймера,
-             // но для простоты просто возобновим отсчет
-             timerInterval = setInterval(updateTimer, 1000);
-             updateUI();
-             statusDisplay.textContent = 'Идет запись... (через расширение)';
-             statusDisplay.className = 'status recording';
-
-        } else if (request.action === "recordingError") {
-            // Расширение сообщило об ошибке записи
-            console.error("Ошибка записи получена от расширения:", request.error);
-            alert(`Ошибка записи через расширение: ${request.error.message || request.error}`);
-
-            // Обновить UI страницы для отображения ошибки
-            isRecording = false;
-            isPaused = false;
-            clearInterval(timerInterval);
-            timerDisplay.textContent = '00:00:00';
-            updateUI();
-            statusDisplay.textContent = 'Ошибка записи';
-            statusDisplay.className = 'status error';
-        } else if (request.action === "selectionCancelled") {
-             // Расширение сообщило об отмене выбора источника
-             console.log("Выбор источника записи отменен пользователем.");
-             alert("Выбор источника записи отменен.");
-             isRecording = false; // Сбрасываем состояние записи, если она не началась
-             isPaused = false;
-             clearInterval(timerInterval);
-             timerDisplay.textContent = '00:00:00';
-             updateUI();
-             statusDisplay.textContent = 'Готов к записи'; // Сбрасываем статус
-             statusDisplay.className = 'status ready';
-        }
-    });
-} else {
-    console.warn("API расширений Chrome не доступен. Убедитесь, что код выполняется в контексте веб-страницы, с которой может взаимодействовать расширение.");
-    // Здесь можно добавить сообщение пользователю, что нужно установить расширение
-     statusDisplay.textContent = 'Требуется расширение браузера';
-     statusDisplay.className = 'status error';
-     btnStart.disabled = true; // Отключаем кнопку старта без расширения
-}
-
-
-// Основные функции
 async function toggleRecording() {
-    // Логика переключения состояния записи теперь отправляется в расширение
     if (!isRecording) {
         await startRecording();
     } else if (isRecording && !isPaused) {
@@ -158,110 +50,312 @@ async function toggleRecording() {
 }
 
 async function startRecording() {
-    // Проверяем, доступен ли API расширений перед отправкой сообщения
-    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
-         alert("Расширение браузера недоступно. Пожалуйста, установите и включите расширение.");
-         return;
-    }
+    try {
+        const videoSource = videoSourceSelect.value;
+        const audioSource = audioSourceSelect.value; // Получаем выбранный источник аудио
+        let screenStream; // Поток экрана
+        let audioStream = null; // Поток аудио (микрофон)
+        let combinedStream; // Объединенный поток
 
-    console.log("Запрос на начало записи отправляется в расширение...");
-    statusDisplay.textContent = 'Ожидание выбора источника...';
-    statusDisplay.className = 'status pending';
+        console.log("Попытка начала записи...");
+        statusDisplay.textContent = 'Запрашиваем доступ к медиа...';
+        statusDisplay.className = 'status pending';
 
-    // Отправляем сообщение расширению для начала записи
-    chrome.runtime.sendMessage({
-        action: "startRecording",
-        videoSource: videoSourceSelect.value,
-        audioSource: audioSourceSelect.value
-        // Можно добавить разрешение и FPS, если расширение будет их использовать
-    }, function(response) {
-        // Ответ от расширения будет обработан в слушателе chrome.runtime.onMessage
-        // Этот колбэк может быть вызван сразу с базовым статусом или позже.
-        // Основная логика обновления UI при успешном начале записи происходит в слушателе 'recordingStarted'.
-         console.log("Ответ от расширения на запрос startRecording:", response);
-         if (response && response.status === "error") {
-             // Обработка ошибок, которые могут произойти до вызова chooseDesktopMedia или getUserMedia
-             alert(`Ошибка при подготовке к записи: ${response.error.message || response.error}`);
-             statusDisplay.textContent = 'Ошибка подготовки';
-             statusDisplay.className = 'status error';
-             // Сбросить UI, так как запись не началась
-             isRecording = false;
-             isPaused = false;
-             clearInterval(timerInterval);
+        // 1. Получаем видеопоток экрана/окна
+        const videoConstraints = {};
+         if (videoSource === 'screen') {
+            videoConstraints.mediaSource = 'screen';
+        } else if (videoSource === 'window') {
+             videoConstraints.mediaSource = 'window';
+        } else if (videoSource === 'region') {
+            alert("Выбор произвольной области временно недоступен.");
+            // Сбросить UI обратно в готовность
+            updateUI();
+            statusDisplay.textContent = 'Готов к записи';
+            statusDisplay.className = 'status ready';
+            return;
+        }
+
+         console.log("Запрос getDisplayMedia для видео с ограничениями:", videoConstraints);
+        screenStream = await navigator.mediaDevices.getDisplayMedia({
+            video: videoConstraints,
+            audio: false // Не запрашиваем аудио через getDisplayMedia, будем получать отдельно микрофон
+        });
+
+        const videoTracks = screenStream.getVideoTracks();
+         if (videoTracks.length === 0) {
+             console.error("Видеодорожка не получена!");
+             alert("Не удалось получить видеодорожку для записи экрана. Возможно, вы отменили выбор.");
+             if (screenStream) {
+                screenStream.getTracks().forEach(track => track.stop());
+             }
+             // Сбросить UI обратно в готовность
+             updateUI();
+             statusDisplay.textContent = 'Готов к записи';
+             statusDisplay.className = 'status ready';
+             return; // Прекращаем запись, если нет видео
+         } else {
+              console.log("Видеодорожка получена:", videoTracks[0].label);
+         }
+
+
+        // 2. Получаем аудиопоток микрофона, если выбран соответствующий источник
+        // Проверяем, что browser поддерживает getUserMedia и выбран не "Без звука"
+        if (audioSource !== 'none' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            try {
+                console.log("Запрос getUserMedia для микрофона.");
+                audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                console.log("Аудиодорожка микрофона получена.");
+                 if (audioStream.getAudioTracks().length === 0) {
+                      console.warn("getUserMedia вернул поток, но аудиодорожек нет.");
+                      audioStream = null; // Обнуляем, если нет дорожек
+                      alert("Не удалось получить аудиодорожку микрофона."); // Сообщить пользователю
+                 }
+            } catch (audioError) {
+                console.warn("Не удалось получить доступ к микрофону:", audioError);
+                // Проверяем, была ли ошибка связана с разрешением
+                 if (audioError.name === 'NotAllowedError' || audioError.name === 'PermissionDeniedError') {
+                     alert("Необходимо разрешить доступ к микрофону для записи звука.");
+                 } else if (audioError.name === 'NotFoundError') {
+                     alert("Микрофон не найден.");
+                 }
+                else {
+                    alert("Не удалось получить доступ к микрофону. Запись будет без звука.");
+                }
+                audioStream = null; // Сбрасываем аудиопоток в случае ошибки
+            }
+        } else if (audioSource !== 'none') {
+             console.warn("getUserMedia не поддерживается или выбрано 'Без звука'.");
+             if (! (navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
+                 alert("Ваш браузер не поддерживает захват микрофона.");
+             }
+        }
+
+
+        // 3. Объединяем видео и аудио потоки
+        combinedStream = new MediaStream();
+
+        // Добавляем видеодорожки из screenStream
+        screenStream.getVideoTracks().forEach(track => combinedStream.addTrack(track));
+
+        // Добавляем аудиодорожки из audioStream (если он успешно получен)
+        if (audioStream) {
+             audioStream.getAudioTracks().forEach(track => combinedStream.addTrack(track));
+             console.log("Аудиодорожка микрофона добавлена в объединенный поток.");
+        } else {
+             console.log("Аудиодорожка микрофона не будет добавлена (не выбрана, не получена или ошибка).");
+        }
+
+         // Важно остановить оригинальные потоки после копирования дорожек
+         if (screenStream) {
+             screenStream.getTracks().forEach(track => track.stop());
+         }
+         if (audioStream) {
+             audioStream.getTracks().forEach(track => track.stop());
+         }
+
+
+        currentStream = combinedStream; // Сохраняем объединенный поток
+
+        // Проверяем, что в объединенном потоке есть хотя бы одна дорожка
+        if (combinedStream.getTracks().length === 0) {
+             console.error("Объединенный поток не содержит дорожек!");
+             alert("Не удалось создать медиапоток для записи. Убедитесь, что вы разрешили доступ к экрану.");
+              // Сбросить UI обратно в готовность
+             updateUI();
+             statusDisplay.textContent = 'Готов к записи';
+             statusDisplay.className = 'status ready';
+             return;
+        }
+
+
+        // 4. Настройка MediaRecorder
+        recordedChunks = [];
+        // Попробуем mimeType с кодеком vp9, который хорошо поддерживается
+        let options = { mimeType: 'video/webm; codecs=vp9' };
+
+        // Проверяем, поддерживается ли выбранный mimeType
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+             console.warn(`${options.mimeType} не поддерживается, пробуем 'video/webm'`);
+             options = { mimeType: 'video/webm' };
+             if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                  console.error("'video/webm' также не поддерживается!");
+                  alert("Ваш браузер не поддерживает запись видео в формате WebM.");
+                  // Останавливаем все треки
+                  if (currentStream) {
+                    currentStream.getTracks().forEach(track => track.stop());
+                  }
+                  currentStream = null;
+                  // Сбросить UI обратно в готовность
+                  updateUI();
+                  statusDisplay.textContent = 'Готов к записи';
+                  statusDisplay.className = 'status ready';
+                  return; // Прекращаем запись
+             }
+        }
+
+        console.log("Создание MediaRecorder с mimeType:", options.mimeType);
+        mediaRecorder = new MediaRecorder(combinedStream, options); // Используем объединенный поток
+
+        mediaRecorder.ondataavailable = event => {
+            console.log("ondataavailable", event.data.size, "bytes");
+            if (event.data.size > 0) {
+                recordedChunks.push(event.data);
+            }
+        };
+
+        mediaRecorder.onstop = () => {
+            console.log("onstop. Total chunks:", recordedChunks.length);
+            if (recordedChunks.length === 0) {
+                 alert("Запись не содержит данных. Возможно, поток был прерван преждевременно.");
+                 // Останавливаем все треки
+                 if (currentStream) {
+                    currentStream.getTracks().forEach(track => track.stop());
+                 }
+                 currentStream = null;
+                 updateUI();
+                 timerDisplay.textContent = '00:00:00'; // Сбросить таймер
+                 statusDisplay.textContent = 'Готов к записи'; // Сбросить статус
+                 statusDisplay.className = 'status ready';
+                 return; // Прекращаем обработку, если нет данных
+            }
+
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            const url = URL.createObjectURL(blob);
+            previewVideo.src = url;
+            previewVideo.style.display = 'block';
+
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `screen_record_${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+            document.body.appendChild(a);
+            a.click();
+
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }, 100);
+
+             // Останавливаем все треки в потоке после завершения записи
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+             currentStream = null; // Обнулить поток
+
              timerDisplay.textContent = '00:00:00';
              updateUI();
-         } else if (response && response.status === "cancelled") {
-              // Отмена уже обработана в слушателе, но можно добавить дополнительную логику здесь, если нужно
-         }
-    });
+             statusDisplay.textContent = 'Запись завершена'; // Обновить статус
+             statusDisplay.className = 'status ready'; // Или другой класс для завершения записи
+        };
 
-    // Удалены все вызовы getDisplayMedia, MediaRecorder и связанные обработчики
-    // Логика получения потока и записи перенесена в расширение.
+        mediaRecorder.onerror = (event) => {
+            console.error("MediaRecorder error:", event.error);
+            alert(`Ошибка MediaRecorder: ${event.error.name} - ${event.error.message}`);
+            stopRecording(); // Попытаться остановить запись при ошибке
+        };
+
+        // 5. Начать запись
+        mediaRecorder.start(1000); // Собирать данные каждую секунду
+
+        isRecording = true;
+        isPaused = false;
+        recordingStartTime = Date.now();
+        timerInterval = setInterval(updateTimer, 1000);
+        updateTimer(); // Обновить таймер сразу
+        updateUI();
+        statusDisplay.textContent = 'Идет запись...';
+        statusDisplay.className = 'status recording';
+
+
+        // Добавляем слушатель для отслеживания завершения захвата экрана пользователем
+        // Это полезно, если пользователь нажимает "Остановить" в нативном диалоге браузера
+        combinedStream.getVideoTracks()[0].onended = function() {
+            console.log("Захват экрана завершен (пользователь остановил или окно закрылось).");
+             // Если пользователь остановил захват через системный диалог,
+             // нужно остановить и MediaRecorder, если он еще записывает
+             if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                 console.log("Останавливаем MediaRecorder после завершения захвата экрана.");
+                 mediaRecorder.stop();
+             }
+             // stopRecording() будет вызвана через mediaRecorder.onstop
+        };
+
+
+    } catch (error) {
+        console.error('Ошибка при начале записи:', error);
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+             alert("Необходимо разрешить доступ к экрану и/или микрофону для записи.");
+        } else if (error.name === 'NotFoundError') {
+             alert("Не найдены доступные источники для записи экрана или микрофона.");
+        } else if (error.name === 'AbortError') {
+             alert("Запрос на доступ к медиа был отклонен или захват был прекращен преждевременно.");
+        }
+        else {
+             alert(`Ошибка при начале записи: ${error.message}`);
+        }
+        // В случае ошибки сбросить UI обратно в готовность
+        updateUI();
+        statusDisplay.textContent = 'Готов к записи';
+        statusDisplay.className = 'status ready';
+        // Не вызываем stopRecording здесь, чтобы не пытаться остановить несуществующие потоки/MediaRecorder
+        // if (currentStream) {
+        //     currentStream.getTracks().forEach(track => track.stop());
+        // }
+        // currentStream = null;
+    }
 }
 
 function pauseRecording() {
     if (!isRecording || isPaused) return;
-
-    // Проверяем, доступен ли API расширений
-    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
-        console.warn("Расширение недоступно для паузы.");
-        return;
+    isPaused = true;
+    clearInterval(timerInterval);
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        console.log("Приостановка записи...");
+        mediaRecorder.pause();
+        statusDisplay.textContent = 'Запись приостановлена';
+        statusDisplay.className = 'status paused';
     }
-
-    console.log("Запрос на паузу записи отправляется в расширение...");
-    // Отправляем сообщение расширению для паузы записи
-    chrome.runtime.sendMessage({ action: "pauseRecording" }, function(response) {
-         console.log("Ответ от расширения на запрос pauseRecording:", response);
-         // UI будет обновлен после получения сообщения 'recordingPaused' от расширения
-    });
-     // Оставляем обновление UI на странице только после подтверждения от расширения
+    updateUI();
 }
 
 function resumeRecording() {
     if (!isRecording || !isPaused) return;
-
-    // Проверяем, доступен ли API расширений
-    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
-         console.warn("Расширение недоступно для возобновления.");
-         return;
+    isPaused = false;
+    // recordingStartTime = Date.now() - (Date.now() - recordingStartTime); // Некорректно
+    timerInterval = setInterval(updateTimer, 1000);
+    if (mediaRecorder && mediaRecorder.state === 'paused') {
+        console.log("Возобновление записи...");
+        mediaRecorder.resume();
+        statusDisplay.textContent = 'Идет запись...';
+        statusDisplay.className = 'status recording';
     }
-
-    console.log("Запрос на возобновление записи отправляется в расширение...");
-    // Отправляем сообщение расширению для возобновления записи
-    chrome.runtime.sendMessage({ action: "resumeRecording" }, function(response) {
-         console.log("Ответ от расширения на запрос resumeRecording:", response);
-         // UI будет обновлен после получения сообщения 'recordingResumed' от расширения
-    });
-     // Оставляем обновление UI на странице только после подтверждения от расширения
+    updateUI();
 }
 
 function stopRecording() {
     if (!isRecording) return;
+    isRecording = false; // Сбрасываем состояние сразу для обновления UI
+    isPaused = false;
+    clearInterval(timerInterval); // Остановить таймер
+    timerDisplay.textContent = '00:00:00'; // Сбросить таймер
+    updateUI(); // Обновляем UI в состояние "Готов к записи"
 
-    // Проверяем, доступен ли API расширений
-    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
-        console.warn("Расширение недоступно для остановки.");
-        // В случае, если расширение стало недоступно во время записи,
-        // нужно как-то попытаться остановить поток, если он еще активен.
-        // Но в этом сценарии мы предполагаем, что поток управляется расширением.
-        // Поэтому просто сбросим UI на странице.
-         isRecording = false;
-         isPaused = false;
-         clearInterval(timerInterval);
-         timerDisplay.textContent = '00:00:00';
-         updateUI();
-         statusDisplay.textContent = 'Готов к записи (расширение недоступно)';
-         statusDisplay.className = 'status error';
-        return;
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+         console.log("Остановка записи...");
+        mediaRecorder.stop(); // Это вызовет mediaRecorder.onstop, где будет обработан файл
+    } else {
+         console.log("MediaRecorder не активен для остановки.");
+        // Если MediaRecorder не активен, просто очищаем, если что-то осталось
+        recordedChunks = [];
+        if (currentStream) {
+            currentStream.getTracks().forEach(track => track.stop());
+        }
+        currentStream = null;
+         statusDisplay.textContent = 'Готов к записи';
+         statusDisplay.className = 'status ready';
+         previewVideo.style.display = 'none';
     }
-
-    console.log("Запрос на остановку записи отправляется в расширение...");
-    // Отправляем сообщение расширению для остановки записи
-    chrome.runtime.sendMessage({ action: "stopRecording" }, function(response) {
-         console.log("Ответ от расширения на запрос stopRecording:", response);
-         // UI будет обновлен после получения сообщения 'recordingStopped' от расширения
-    });
-     // Оставляем обновление UI на странице только после подтверждения от расширения
 }
 
 function updateTimer() {
@@ -273,48 +367,49 @@ function updateTimer() {
 }
 
 function updateUI() {
-    // Обновление UI зависит от локальных флагов isRecording и isPaused,
-    // которые меняются на основе сообщений от расширения
+    // Обновление UI зависит от локальных флагов isRecording и isPaused
     if (isRecording) {
         if (isPaused) {
             btnStart.textContent = 'Продолжить запись';
-            btnStop.disabled = false;
-            // statusDisplay.textContent обновляется по сообщениям от расширения
-            // statusDisplay.className = 'status paused';
+            // btnStop.disabled = false; // Управляется ниже
+            // statusDisplay.textContent и className управляются в функциях pauseRecording/resumeRecording
         } else {
             btnStart.textContent = 'Пауза записи';
-            btnStop.disabled = false;
-            // statusDisplay.textContent обновляется по сообщениям от расширения
-            // statusDisplay.className = 'status recording';
+            // btnStop.disabled = false; // Управляется ниже
+            // statusDisplay.textContent и className управляются в startRecording
         }
+        btnStop.disabled = false; // Кнопка Стоп активна, когда идет запись или пауза
     } else {
         btnStart.textContent = 'Начать запись';
         btnStop.disabled = true; // Отключаем кнопку остановки, когда не записываем
-        // statusDisplay.textContent обновляется по сообщениям от расширения
-        // statusDisplay.className = 'status ready';
+        // statusDisplay.textContent и className управляются в stopRecording или catch block startRecording
         previewVideo.style.display = 'none'; // Скрыть предпросмотр, когда не записывается
     }
 
     // Отключение элементов управления во время активной записи (не паузы)
-     const isActivelyRecording = isRecording && !isPaused;
+    const isActivelyRecording = isRecording && !isPaused;
     videoSourceSelect.disabled = isActivelyRecording;
     resolutionSelect.disabled = isActivelyRecording;
     fpsSelect.disabled = isActivelyRecording;
+    // Отключаем аудио источник только во время активной записи
     audioSourceSelect.disabled = isActivelyRecording;
     volumeSlider.disabled = isActivelyRecording; // Слайдер громкости пока неактивен
-    btnStart.disabled = isActivelyRecording; // Отключаем кнопку старта, когда активно записываем
+
+    // Кнопка Start/Pause/Resume активна, если мы не в состоянии "Готов к записи" (т.е. идет запись или пауза)
+    // или если запись не идет и не на паузе (для начала записи)
+     btnStart.disabled = isActivelyRecording; // Кнопка Start неактивна, когда активно записываем
+     // Кнопка Stop активна, только если запись идет или на паузе
+     btnStop.disabled = !isRecording && !isPaused;
 }
 
 
-// Функции выбора области (заглушки, требуют доработки через расширение)
-// Логика выбора области остается на странице, но сама запись выбранной области
-// должна будет быть реализована в расширении (это сложная задача).
+// Функции выбора области (заглушки)
 function showRegionSelectionOverlay() {
     regionOverlay.style.display = 'block';
 }
 
 function startRegionSelection(e) {
-    if (e.target !== regionOverlay) return; // Начинаем только при клике по оверлею
+    if (e.target !== regionOverlay) return;
     selectionStart = { x: e.clientX, y: e.clientY };
     selectionRectangle.style.left = `${e.clientX}px`;
     selectionRectangle.style.top = `${e.clientY}px`;
@@ -338,76 +433,64 @@ function endRegionSelection(e) {
     if (!selectionStart) return;
     const width = Math.abs(e.clientX - selectionStart.x);
     const height = Math.abs(e.clientY - selectionStart.y);
-    if (width > 10 && height > 10) { // Минимальный размер области
+    if (width > 10 && height > 10) {
         selectedRegion = {
             x: Math.min(e.clientX, selectionStart.x),
             y: Math.min(e.clientY, selectionStart.y),
             width: width,
             height: height
         };
-        alert(`Выбрана область: ${width}x${height} at (${selectedRegion.x},${selectedRegion.y}).\n\nЗапись выбранной области пока не реализована через расширение.`);
-        // Здесь нужно будет отправить сообщение расширению о выбранной области,
-        // и расширение должно будет реализовать логику захвата именно этой области.
-        // Это потребует использования Canvas Capture или других сложных техник в расширении.
-
+        alert(`Выбрана область: ${width}x${height} at (${selectedRegion.x},${selectedRegion.y}).\n\nЗапись выбранной области пока не реализована.`);
     } else {
          alert("Выбранная область слишком мала.");
     }
     selectionStart = null;
-    regionOverlay.style.display = 'none'; // Скрываем оверлей
+    regionOverlay.style.display = 'none';
 }
 
-// Привязываем слушатели событий к оверлею выбора области
 regionOverlay.addEventListener('mousedown', startRegionSelection);
 regionOverlay.addEventListener('mousemove', updateRegionSelection);
 regionOverlay.addEventListener('mouseup', endRegionSelection);
 
 // Вспомогательные функции (заглушки)
 function showSettings() {
-    alert("Настройки пока не реализованы в этой веб-версии. Большая часть настроек кодирования будет зависеть от реализации в расширении.");
+    alert("Настройки пока не реализованы.");
 }
 
 function showHelp() {
     alert("Справка по Веб-рекордеру экрана\n\n" +
-        "Это веб-приложение работает совместно с расширением браузера.\n\n" +
-        "1. Установите и включите расширение 'Screen Recorder with Audio'.\n" + // Укажите точное имя вашего расширения
-        "2. Выберите источник видео (экран или окно)\n" +
-        "3. Выберите источник звука (микрофон, системные звуки или без звука).\n" +
+        "1. Выберите источник видео (экран или окно)\n" +
+        "2. Выберите разрешение и частоту кадров\n" +
+        "3. Выберите источник звука (микрофон или без звука).\n" +
         "4. Нажмите 'Начать запись' или Alt+R. Появится диалог выбора источника от браузера - выберите и подтвердите.\n" +
         "5. Для паузы нажмите 'Пауза записи' или Alt+S\n" +
         "6. Для остановки нажмите 'Остановить запись' или Alt+T. Файл будет автоматически скачан.\n\n" +
-        "Примечание: Функциональность зависит от возможностей расширения и браузера.");
+        "Примечание: Запись системных звуков через стандартные веб-API ненадежна и может не работать.");
 }
 
 function handleHotkeys(e) {
-    // Проверяем, что нажата клавиша Alt
     if (e.altKey) {
         if (e.key === 'r') {
-            e.preventDefault(); // Предотвратить действие браузера по умолчанию
-            toggleRecording(); // Вызовет startRecording, которая отправит сообщение расширению
+            e.preventDefault();
+            toggleRecording();
         } else if (e.key === 's' && isRecording && !isPaused) {
             e.preventDefault();
-            pauseRecording(); // Отправит сообщение расширению
+            pauseRecording();
         } else if (e.key === 't' && isRecording) {
             e.preventDefault();
-            stopRecording(); // Отправит сообщение расширению
+            stopRecording();
         }
-    }
-    // Оставляем обработку клавиши Escape для закрытия оверлея выбора области
-    else if (e.key === 'Escape' && regionOverlay.style.display === 'block') {
+    } else if (e.key === 'Escape' && regionOverlay.style.display === 'block') {
          e.preventDefault();
          regionOverlay.style.display = 'none';
-         selectionStart = null; // Сбросить выбор области
+         selectionStart = null;
     }
 }
 
 // Обработка выбора пользовательского разрешения (заглушка)
 resolutionSelect.addEventListener('change', function() {
     if (resolutionSelect.value === 'custom') {
-        alert("Пользовательское разрешение пока не реализовано в связке с расширением.");
-        // В реальной реализации здесь можно было бы показать модальное окно для ввода разрешения
-        // и отправить эти параметры в расширение для учета при захвате.
-        // Для простоты пока сбросим на стандартное разрешение
+        alert("Пользовательское разрешение пока не реализовано.");
         resolutionSelect.value = '1920x1080'; // Сброс на стандартное
     }
 });
@@ -415,11 +498,8 @@ resolutionSelect.addEventListener('change', function() {
 // Обработка выбора произвольной области
 videoSourceSelect.addEventListener('change', function() {
     if (videoSourceSelect.value === 'region') {
-        alert("Выбор произвольной области пока требует реализации в расширении.");
-        // Показываем оверлей при выборе "Произвольная область"
+        alert("Выбор произвольной области пока не реализован.");
         showRegionSelectionOverlay();
-        // Сбрасываем на "Весь экран", пока выбор области не завершен и запись не началась
-        // В более продвинутой версии можно было бы запускать запись после выбора области
         videoSourceSelect.value = 'screen'; // Сброс на Весь экран
     }
 });
