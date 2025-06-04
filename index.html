@@ -8,7 +8,12 @@
 </head>
 <body>
     <div class="container">
-        <h1>Веб-рекордер экрана</h1>
+        <!-- Добавляем новый контейнер для заголовка и переключателя темы -->
+        <div class="header-with-theme">
+            <h1>Веб-рекордер экрана</h1>
+            <!-- Кнопка переключения темы -->
+            <button id="theme-toggle" class="theme-toggle">Сменить тему</button>
+        </div>
 
         <div class="control-group">
             <label for="videoSource">Источник видео:</label>
@@ -17,7 +22,6 @@
                 <option value="window">Окно приложения</option>
                 <option value="region">Произвольная область</option>
             </select>
-
             <label for="resolution">Разрешение:</label>
             <select id="resolution">
                 <option value="640x480">640x480</option>
@@ -25,7 +29,6 @@
                 <option value="1920x1080">1920x1080</option>
                 <option value="custom">Пользовательское...</option>
             </select>
-
             <label for="fps">Кадров в секунду (FPS):</label>
             <select id="fps">
                 <option value="24">24</option>
@@ -33,7 +36,6 @@
                 <option value="60">60</option>
             </select>
         </div>
-
         <div class="control-group">
             <label for="audioSource">Источник аудио:</label>
             <select id="audioSource">
@@ -43,23 +45,18 @@
                 <option value="system">Системные звуки (Экспериментально)</option>
                 <option value="both">Микрофон + Системные звуки (Экспериментально)</option>
             </select>
-
             <label for="volume">Громкость (будет реализовано в JS):</label>
             <input type="range" id="volume" min="0" max="100" value="50" disabled>
         </div>
-
         <div id="timer">00:00:00</div>
         <div id="status" class="status ready">Готов к записи</div>
-
         <video id="preview" controls style="display: none;"></video>
-
         <div class="button-group">
             <button id="btnStart">Начать запись</button>
             <button id="btnStop" disabled>Остановить запись</button>
             <button id="btnSettings">Настройки</button>
             <button id="btnHelp">Справка</button>
         </div>
-
         <div class="hotkey-info">
             <p><strong>Горячие клавиши:</strong> Alt+R (Старт/Продолжить) | Alt+S (Пауза) | Alt+T (Стоп)</p>
         </div>
