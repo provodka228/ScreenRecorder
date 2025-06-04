@@ -85,7 +85,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const displayMediaConstraints = {
                 video: {
                     mediaSource: videoSource === 'screen' ? 'screen' : 
-                              videoSource === 'window' ? 'window' : 'screen'
+                              videoSource === 'window' ? 'window' : 'screen',
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                    frameRate: { ideal: 30, max: 60 }
                 },
                 audio: audioSource === 'system' || audioSource === 'both'
             };
@@ -97,9 +100,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     throw err;
                 });
 
-            if (screenStream.getVideoTracks().length === 0) {
+            // Проверка видеодорожки
+            const videoTracks = screenStream.getVideoTracks();
+            if (videoTracks.length === 0) {
                 throw new Error("Не удалось получить видеодорожку");
             }
+
+            // Добавляем обработчик для отслеживания состояния видеодорожки
+            videoTracks[0].addEventListener('ended', () => {
+                console.log("Видеодорожка завершена");
+                stopRecording();
+            });
 
             // 2. Получаем аудиопоток с микрофона, если нужно
             let micStream = null;
@@ -111,11 +122,19 @@ document.addEventListener('DOMContentLoaded', function() {
                             echoCancellation: true,
                             noiseSuppression: true,
                             sampleRate: 44100
-                        }
+                        },
+                        video: false
                     });
 
-                    // Создаем AudioContext если он еще не создан или закрыт
-                    if (!audioContext || audioContext.state === 'closed') {
+                    // Проверка аудиодорожки
+                    if (originalMicStream.getAudioTracks().length === 0) {
+                        throw new Error("Не удалось получить аудиодорожку микрофона");
+                    }
+
+                    // Восстанавливаем AudioContext если нужно
+                    if (audioContext.state === 'suspended') {
+                        await audioContext.resume();
+                    } else if (audioContext.state === 'closed') {
                         audioContext = new (window.AudioContext || window.webkitAudioContext)();
                     }
 
@@ -134,6 +153,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Используем обработанный поток
                     micStream = dest.stream;
 
+                    // Добавляем обработчик для отслеживания состояния аудиодорожки
+                    originalMicStream.getAudioTracks()[0].addEventListener('ended', () => {
+                        console.log("Аудиодорожка микрофона завершена");
+                        if (audioSource === 'mic') {
+                            stopRecording();
+                        }
+                    });
+
                 } catch (audioError) {
                     console.warn("Не удалось получить доступ к микрофону:", audioError);
                     if (audioSource === 'mic') {
@@ -146,14 +173,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const combinedStream = new MediaStream();
             
             // Добавляем видеодорожку
-            screenStream.getVideoTracks().forEach(track => {
+            videoTracks.forEach(track => {
                 combinedStream.addTrack(track);
-                track.onended = () => {
-                    console.log("Видеодорожка завершена");
-                    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                        mediaRecorder.stop();
-                    }
-                };
             });
 
             // Добавляем аудиодорожки микрофона (если есть)
@@ -164,10 +185,21 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             // Добавляем системные звуки (если есть и запрошены)
-            if (audioSource === 'system' || audioSource === 'both') {
+            if ((audioSource === 'system' || audioSource === 'both') && screenStream.getAudioTracks().length > 0) {
                 screenStream.getAudioTracks().forEach(track => {
                     combinedStream.addTrack(track);
+                    track.addEventListener('ended', () => {
+                        console.log("Аудиодорожка системных звуков завершена");
+                        if (audioSource === 'system') {
+                            stopRecording();
+                        }
+                    });
                 });
+            }
+
+            // Проверяем, что есть хотя бы одна активная дорожка
+            if (combinedStream.getTracks().length === 0) {
+                throw new Error("Нет активных дорожек для записи");
             }
 
             console.log("Дорожки в объединенном потоке:");
@@ -175,81 +207,89 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log("Аудио:", combinedStream.getAudioTracks());
 
             // 4. Проверяем поддерживаемые форматы
-            let mimeType = 'video/webm';
-            const supportedTypes = [
+            const mimeType = [
                 'video/webm;codecs=vp9,opus',
                 'video/webm;codecs=vp8,opus',
                 'video/webm'
-            ].filter(type => MediaRecorder.isTypeSupported(type));
-
-            if (supportedTypes.length > 0) {
-                mimeType = supportedTypes[0];
-            }
+            ].find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
 
             console.log(`Используем MIME type: ${mimeType}`);
 
             // 5. Создаем MediaRecorder
             recordedChunks = [];
             mediaRecorder = new MediaRecorder(combinedStream, {
-                mimeType: mimeType
+                mimeType: mimeType,
+                videoBitsPerSecond: 2500000, // 2.5 Mbps
+                audioBitsPerSecond: 128000   // 128 Kbps
             });
 
             mediaRecorder.ondataavailable = event => {
-                if (event.data.size > 0) {
+                if (event.data && event.data.size > 0) {
                     recordedChunks.push(event.data);
+                    console.log(`Получен фрагмент данных (${event.data.size} байт)`);
                 }
             };
 
-            mediaRecorder.onstop = () => {
-                console.log("onstop. Total chunks:", recordedChunks.length);
-                if (recordedChunks.length === 0) {
-                    alert("Запись не содержит данных. Возможно, поток был прерван преждевременно.");
+            mediaRecorder.onstop = async () => {
+                console.log("Запись остановлена. Всего фрагментов:", recordedChunks.length);
+                
+                try {
+                    if (recordedChunks.length === 0) {
+                        throw new Error("Запись не содержит данных");
+                    }
+
+                    const blob = new Blob(recordedChunks, { type: mimeType });
+                    const url = URL.createObjectURL(blob);
+                    
+                    // Показываем превью
+                    previewVideo.src = url;
+                    previewVideo.style.display = 'block';
+                    
+                    // Автоматическое скачивание
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = `screen_record_${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+                    document.body.appendChild(a);
+                    a.click();
+
+                    // Очистка
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        window.URL.revokeObjectURL(url);
+                    }, 100);
+
+                    statusDisplay.textContent = 'Запись успешно сохранена';
+                    statusDisplay.className = 'status ready';
+                    
+                } catch (error) {
+                    console.error("Ошибка при сохранении записи:", error);
+                    statusDisplay.textContent = 'Ошибка: ' + (error.message || 'неизвестная ошибка');
+                    statusDisplay.className = 'status error';
+                    
+                    if (error.message.includes("не содержит данных")) {
+                        alert("Запись не содержит данных. Возможно, поток был прерван преждевременно.");
+                    }
+                } finally {
+                    // Очистка ресурсов
                     if (currentStream) {
                         currentStream.getTracks().forEach(track => track.stop());
                     }
+                    if (audioContext && audioContext.state !== 'closed') {
+                        await audioContext.close();
+                    }
                     currentStream = null;
-                    updateUI();
+                    recordedChunks = [];
+                    
                     timerDisplay.textContent = '00:00:00';
-                    statusDisplay.textContent = 'Готов к записи';
-                    statusDisplay.className = 'status ready';
-                    return;
+                    updateUI();
                 }
-
-                const blob = new Blob(recordedChunks, { type: mimeType });
-                const url = URL.createObjectURL(blob);
-                previewVideo.src = url;
-                previewVideo.style.display = 'block';
-
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                a.download = `screen_record_${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
-                document.body.appendChild(a);
-                a.click();
-
-                setTimeout(() => {
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
-                }, 100);
-
-                if (currentStream) {
-                    currentStream.getTracks().forEach(track => track.stop());
-                }
-                // Закрываем AudioContext
-                if (audioContext && audioContext.state !== 'closed') {
-                    audioContext.close();
-                }
-                currentStream = null;
-
-                timerDisplay.textContent = '00:00:00';
-                updateUI();
-                statusDisplay.textContent = 'Запись завершена';
-                statusDisplay.className = 'status ready';
             };
 
             mediaRecorder.onerror = (event) => {
-                console.error("MediaRecorder error:", event.error);
-                alert(`Ошибка MediaRecorder: ${event.error.name} - ${event.error.message}`);
+                console.error("Ошибка MediaRecorder:", event.error);
+                statusDisplay.textContent = `Ошибка: ${event.error.name}`;
+                statusDisplay.className = 'status error';
                 stopRecording();
             };
 
@@ -261,29 +301,35 @@ document.addEventListener('DOMContentLoaded', function() {
             isRecording = true;
             isPaused = false;
             recordingStartTime = Date.now();
-            totalPausedTime = 0; // Сбрасываем счетчик пауз
+            totalPausedTime = 0;
             timerInterval = setInterval(updateTimer, 1000);
             updateTimer();
             updateUI();
+            
             statusDisplay.textContent = 'Идет запись...';
             statusDisplay.className = 'status recording';
-
             console.log("Запись успешно начата");
 
         } catch (error) {
             console.error('Ошибка при начале записи:', error);
-            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-                alert("Необходимо разрешить доступ к экрану и/или микрофону для записи.");
+            
+            // Улучшенные сообщения об ошибках
+            let errorMessage = 'Ошибка при начале записи';
+            if (error.name === 'NotAllowedError') {
+                errorMessage = "Доступ к устройствам запрещен. Разрешите доступ к экрану и микрофону.";
             } else if (error.name === 'NotFoundError') {
-                alert("Не найдены доступные источники для записи экрана или микрофона.");
-            } else if (error.name === 'AbortError') {
-                alert("Запрос на доступ к медиа был отклонен или захват был прекращен преждевременно.");
+                errorMessage = "Не найдены доступные устройства для записи.";
+            } else if (error.name === 'OverconstrainedError') {
+                errorMessage = "Запрошенные параметры записи не поддерживаются.";
             } else {
-                alert(`Ошибка при начале записи: ${error.message}`);
+                errorMessage = error.message || error.toString();
             }
-            updateUI();
-            statusDisplay.textContent = 'Готов к записи';
-            statusDisplay.className = 'status ready';
+            
+            alert(errorMessage);
+            statusDisplay.textContent = 'Ошибка: ' + errorMessage;
+            statusDisplay.className = 'status error';
+            
+            // Очистка ресурсов при ошибке
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
             }
@@ -291,6 +337,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 audioContext.close();
             }
             currentStream = null;
+            recordedChunks = [];
+            
+            updateUI();
         }
     }
 
@@ -304,7 +353,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         try {
             if (mediaRecorder && mediaRecorder.state === 'recording') {
-                // Сохраняем последние данные перед паузой
                 mediaRecorder.requestData();
                 mediaRecorder.pause();
                 console.log("MediaRecorder успешно приостановлен");
@@ -323,8 +371,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         console.log("Возобновление записи...");
         isPaused = false;
-        
-        // Рассчитываем общее время паузы
         totalPausedTime += Date.now() - pauseStartTime;
         
         try {
@@ -344,33 +390,45 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function stopRecording() {
         if (!isRecording) return;
+        
+        console.log("Остановка записи...");
         isRecording = false;
         isPaused = false;
         clearInterval(timerInterval);
-        timerDisplay.textContent = '00:00:00';
-        updateUI();
-
+        
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            console.log("Остановка записи...");
-            mediaRecorder.stop();
+            try {
+                mediaRecorder.stop();
+            } catch (e) {
+                console.error("Ошибка при остановке MediaRecorder:", e);
+                cleanupAfterRecording();
+            }
         } else {
-            console.log("MediaRecorder не активен для остановки.");
-            recordedChunks = [];
-            if (currentStream) {
-                currentStream.getTracks().forEach(track => track.stop());
-            }
-            if (audioContext && audioContext.state !== 'closed') {
-                audioContext.close();
-            }
-            currentStream = null;
-            statusDisplay.textContent = 'Готов к записи';
-            statusDisplay.className = 'status ready';
-            previewVideo.style.display = 'none';
+            console.log("MediaRecorder не активен, выполняется очистка");
+            cleanupAfterRecording();
         }
+        
+        updateUI();
+    }
+
+    function cleanupAfterRecording() {
+        if (currentStream) {
+            currentStream.getTracks().forEach(track => track.stop());
+        }
+        if (audioContext && audioContext.state !== 'closed') {
+            audioContext.close();
+        }
+        currentStream = null;
+        recordedChunks = [];
+        
+        timerDisplay.textContent = '00:00:00';
+        statusDisplay.textContent = 'Готов к записи';
+        statusDisplay.className = 'status ready';
+        previewVideo.style.display = 'none';
     }
 
     function updateTimer() {
-        if (isPaused) return; // Не обновляем таймер во время паузы
+        if (isPaused) return;
         
         const elapsed = Math.floor((Date.now() - recordingStartTime - totalPausedTime) / 1000);
         const hours = Math.floor(elapsed / 3600).toString().padStart(2, '0');
@@ -381,16 +439,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateUI() {
         if (isRecording) {
-            if (isPaused) {
-                btnStart.textContent = 'Продолжить запись';
-            } else {
-                btnStart.textContent = 'Пауза записи';
-            }
+            btnStart.textContent = isPaused ? 'Продолжить запись' : 'Пауза записи';
             btnStop.disabled = false;
         } else {
             btnStart.textContent = 'Начать запись';
             btnStop.disabled = true;
-            previewVideo.style.display = 'none';
         }
 
         const isActivelyRecording = isRecording && !isPaused;
@@ -400,8 +453,9 @@ document.addEventListener('DOMContentLoaded', function() {
         audioSourceSelect.disabled = isActivelyRecording;
         volumeSlider.disabled = isActivelyRecording;
 
-        btnStart.disabled = false; // Всегда активна (меняется только текст)
-        btnStop.disabled = !isRecording;
+        if (!isRecording) {
+            previewVideo.style.display = 'none';
+        }
 
         if (statusDisplay.className !== 'status pending' && statusDisplay.className !== 'status error') {
             if (isRecording) {
@@ -414,7 +468,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Функции выбора области (заглушки)
+    // Функции выбора области
     function showRegionSelectionOverlay() {
         regionOverlay.style.display = 'block';
     }
