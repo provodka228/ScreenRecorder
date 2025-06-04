@@ -2,6 +2,8 @@
 let mediaRecorder;
 let recordedChunks = [];
 let recordingStartTime;
+let pauseStartTime;
+let totalPausedTime = 0;
 let timerInterval;
 let isRecording = false;
 let isPaused = false;
@@ -219,6 +221,7 @@ document.addEventListener('DOMContentLoaded', function() {
             isRecording = true;
             isPaused = false;
             recordingStartTime = Date.now();
+            totalPausedTime = 0; // Сбрасываем счетчик пауз
             timerInterval = setInterval(updateTimer, 1000);
             updateTimer();
             updateUI();
@@ -250,27 +253,47 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function pauseRecording() {
         if (!isRecording || isPaused) return;
+        
+        console.log("Приостановка записи...");
         isPaused = true;
+        pauseStartTime = Date.now();
         clearInterval(timerInterval);
-        if (mediaRecorder && mediaRecorder.state === 'recording') {
-            console.log("Приостановка записи...");
-            mediaRecorder.pause();
-            statusDisplay.textContent = 'Запись приостановлена';
-            statusDisplay.className = 'status paused';
+        
+        try {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.pause();
+                console.log("MediaRecorder успешно приостановлен");
+            }
+        } catch (e) {
+            console.error("Ошибка при приостановке MediaRecorder:", e);
         }
+        
+        statusDisplay.textContent = 'Запись приостановлена';
+        statusDisplay.className = 'status paused';
         updateUI();
     }
 
     function resumeRecording() {
         if (!isRecording || !isPaused) return;
+        
+        console.log("Возобновление записи...");
         isPaused = false;
-        timerInterval = setInterval(updateTimer, 1000);
-        if (mediaRecorder && mediaRecorder.state === 'paused') {
-            console.log("Возобновление записи...");
-            mediaRecorder.resume();
-            statusDisplay.textContent = 'Идет запись...';
-            statusDisplay.className = 'status recording';
+        
+        // Рассчитываем общее время паузы
+        totalPausedTime += Date.now() - pauseStartTime;
+        
+        try {
+            if (mediaRecorder && mediaRecorder.state === 'paused') {
+                mediaRecorder.resume();
+                console.log("MediaRecorder успешно возобновлен");
+            }
+        } catch (e) {
+            console.error("Ошибка при возобновлении MediaRecorder:", e);
         }
+        
+        timerInterval = setInterval(updateTimer, 1000);
+        statusDisplay.textContent = 'Идет запись...';
+        statusDisplay.className = 'status recording';
         updateUI();
     }
 
@@ -299,7 +322,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateTimer() {
-        const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+        // Учитываем время паузы при расчете продолжительности записи
+        const elapsed = Math.floor((Date.now() - recordingStartTime - totalPausedTime) / 1000);
         const hours = Math.floor(elapsed / 3600).toString().padStart(2, '0');
         const minutes = Math.floor((elapsed % 3600) / 60).toString().padStart(2, '0');
         const seconds = (elapsed % 60).toString().padStart(2, '0');
