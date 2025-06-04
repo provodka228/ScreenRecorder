@@ -10,9 +10,6 @@ let isPaused = false;
 let selectedRegion = null;
 let selectionStart = null;
 let currentStream;
-let audioContext;
-let micGainNode;
-let micVolume = 1.0; // По умолчанию громкость 100%
 
 // Ждем полной загрузки HTML документа
 document.addEventListener('DOMContentLoaded', function() {
@@ -31,18 +28,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnHelp = document.getElementById('btnHelp');
     const regionOverlay = document.getElementById('regionSelectionOverlay');
     const selectionRectangle = document.getElementById('selectionRectangle');
-
-    // Инициализация AudioContext
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-    // Обработчик изменения громкости
-    volumeSlider.addEventListener('input', function() {
-        micVolume = parseFloat(this.value);
-        if (micGainNode) {
-            micGainNode.gain.value = micVolume;
-        }
-        console.log("Громкость микрофона установлена на:", micVolume);
-    });
 
     // Проверка поддержки API
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
@@ -106,34 +91,13 @@ document.addEventListener('DOMContentLoaded', function() {
             if ((audioSource === 'mic' || audioSource === 'both') && navigator.mediaDevices.getUserMedia) {
                 try {
                     console.log("Запрашиваем доступ к микрофону...");
-                    const originalMicStream = await navigator.mediaDevices.getUserMedia({ 
+                    micStream = await navigator.mediaDevices.getUserMedia({ 
                         audio: {
                             echoCancellation: true,
                             noiseSuppression: true,
                             sampleRate: 44100
                         }
                     });
-
-                    // Создаем AudioContext если он еще не создан или закрыт
-                    if (!audioContext || audioContext.state === 'closed') {
-                        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    }
-
-                    // Создаем источник из микрофона и узел громкости
-                    const micSource = audioContext.createMediaStreamSource(originalMicStream);
-                    micGainNode = audioContext.createGain();
-                    micGainNode.gain.value = micVolume;
-                    
-                    // Создаем пункт назначения для обработанного аудио
-                    const dest = audioContext.createMediaStreamDestination();
-                    
-                    // Подключаем микрофон -> GainNode -> пункт назначения
-                    micSource.connect(micGainNode);
-                    micGainNode.connect(dest);
-                    
-                    // Используем обработанный поток
-                    micStream = dest.stream;
-
                 } catch (audioError) {
                     console.warn("Не удалось получить доступ к микрофону:", audioError);
                     if (audioSource === 'mic') {
@@ -235,10 +199,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (currentStream) {
                     currentStream.getTracks().forEach(track => track.stop());
                 }
-                // Закрываем AudioContext
-                if (audioContext && audioContext.state !== 'closed') {
-                    audioContext.close();
-                }
                 currentStream = null;
 
                 timerDisplay.textContent = '00:00:00';
@@ -286,9 +246,6 @@ document.addEventListener('DOMContentLoaded', function() {
             statusDisplay.className = 'status ready';
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
-            }
-            if (audioContext && audioContext.state !== 'closed') {
-                audioContext.close();
             }
             currentStream = null;
         }
@@ -358,9 +315,6 @@ document.addEventListener('DOMContentLoaded', function() {
             recordedChunks = [];
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
-            }
-            if (audioContext && audioContext.state !== 'closed') {
-                audioContext.close();
             }
             currentStream = null;
             statusDisplay.textContent = 'Готов к записи';
