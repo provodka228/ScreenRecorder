@@ -53,7 +53,17 @@
             <input type="range" id="volume" min="0" max="2" step="0.1" value="1">
             <label for="volume">Громкость микрофона:</label>
             <span id="volumePercent">100%</span>
+            <!-- Добавлен индикатор уровня звука микрофона -->
+            <div id="audioLevelIndicator" style="width: 50px; height: 10px; background-color: grey; margin-left: 10px; display: inline-block; vertical-align: middle;">
+                 <div id="audioLevelBar" style="width: 0%; height: 100%; background-color: green;"></div>
+            </div>
+             <!-- Конец индикатора -->
         </div>
+
+        <!-- Добавлен элемент для таймера обратного отсчета -->
+        <div id="countdownTimer" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 8em; color: red; z-index: 100; display: none;"></div>
+        <!-- Конец элемента таймера -->
+
         <div id="timer">00:00:00</div>
         <div id="status" class="status ready">Готов к записи</div>
         <video id="preview" controls style="display: none;"></video>
@@ -73,45 +83,62 @@
         <div id="selectionRectangle"></div>
     </div>
 
+    <!-- Контейнер для визуализации кликов мыши -->
+     <div id="clickVisualizations" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2;"></div>
+    <!-- Конец контейнера для кликов -->
+
     <!-- Модальное окно настроек -->
-<div id="settingsModal" class="modal" style="display: none;">
-    <div class="modal-content">
-        <span class="close-button">&times;</span>
-        <h2>Настройки</h2>
-        <div class="setting-item">
-            <label for="recordFormat">Формат записи:</label>
-            <select id="recordFormat">
-                <option value="video/webm;codecs=vp9,opus">WebM (VP9 + Opus)</option>
-                <option value="video/webm;codecs=vp8,opus">WebM (VP8 + Opus)</option>
-                 <option value="video/webm">WebM (По умолчанию)</option>
-                <!-- Добавьте другие форматы, если планируете их поддерживать -->
-            </select>
+    <div id="settingsModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Настройки</h2>
+            <div class="setting-item">
+                <label for="recordFormat">Формат записи:</label>
+                <select id="recordFormat">
+                    <option value="video/webm;codecs=vp9,opus">WebM (VP9 + Opus)</option>
+                    <option value="video/webm;codecs=vp8,opus">WebM (VP8 + Opus)</option>
+                    <option value="video/webm">WebM (По умолчанию)</option>
+                    <!-- Добавьте другие форматы, если планируете их поддерживать -->
+                </select>
+            </div>
+            <div class="setting-item">
+                <label for="videoBitrate">Битрейт видео (bps):</label>
+                <select id="videoBitrate">
+                    <option value="1000000">1 Mbps</option>
+                    <option value="2500000" selected>2.5 Mbps (Рекомендуется)</option>
+                    <option value="5000000">5 Mbps (2K)</option>
+                    <option value="10000000">10 Mbps (4K)</option>
+                    <option value="0">Авто</option> <!-- Опция для автоматического битрейта -->
+                </select>
+            </div>
+            <div class="setting-item">
+                <label for="audioBitrate">Битрейт аудио (bps):</label>
+                <select id="audioBitrate">
+                    <option value="64000">64 Kbps</option>
+                    <option value="128000" selected>128 Kbps (Рекомендуется)</option>
+                    <option value="192000">192 Kbps</option>
+                </select>
+            </div>
+            <div class="setting-item">
+                <label for="includeSystemAudio">Включить системные звуки:</label>
+                <input type="checkbox" id="includeSystemAudio">
+            </div>
+             <div class="setting-item">
+                <label for="showMouseClicks">Показывать клики мыши:</label>
+                <input type="checkbox" id="showMouseClicks" checked> <!-- По умолчанию включено -->
+            </div>
+             <div class="setting-item">
+                <label for="countdownDuration">Таймер обратного отсчета (сек):</label>
+                <select id="countdownDuration">
+                     <option value="0">Без отсчета</option>
+                    <option value="1">1 секунда</option>
+                    <option value="3" selected>3 секунды</option>
+                    <option value="5">5 секунд</option>
+                </select>
+            </div>
+            <!-- Здесь можно добавить другие настройки -->
         </div>
-        <div class="setting-item">
-            <label for="videoBitrate">Битрейт видео (bps):</label>
-            <select id="videoBitrate">
-                <option value="1000000">1 Mbps</option>
-                <option value="2500000" selected>2.5 Mbps (Рекомендуется)</option>
-                <option value="5000000">5 Mbps (2K)</option>
-                <option value="10000000">10 Mbps (4K)</option>
-                 <option value="0">Авто</option> <!-- Опция для автоматического битрейта -->
-            </select>
-        </div>
-        <div class="setting-item">
-            <label for="audioBitrate">Битрейт аудио (bps):</label>
-            <select id="audioBitrate">
-                <option value="64000">64 Kbps</option>
-                <option value="128000" selected>128 Kbps (Рекомендуется)</option>
-                <option value="192000">192 Kbps</option>
-            </select>
-        </div>
-        <div class="setting-item">
-            <label for="includeSystemAudio">Включить системные звуки:</label>
-            <input type="checkbox" id="includeSystemAudio">
-        </div>
-         <!-- Здесь можно добавить другие настройки -->
     </div>
-</div>
     <!-- Конец модального окна настроек -->
 
     <script src="script.js"></script>

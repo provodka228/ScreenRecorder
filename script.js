@@ -19,6 +19,13 @@ let recordFormat = 'video/webm;codecs=vp9,opus'; // Формат записи п
 let videoBitrate = 2500000; // Битрейт видео по умолчанию (2.5 Mbps)
 let audioBitrate = 128000; // Битрейт аудио по умолчанию (128 Kbps)
 let includeSystemAudio = false; // Включать ли системные звуки (изначально false, переопределится из HTML)
+let showMouseClicks = true; // Показывать ли клики мыши (по умолчанию true)
+let countdownDuration = 3; // Длительность обратного отсчета в секундах (по умолчанию 3)
+
+// Переменные для индикатора уровня звука
+let analyser;
+let dataArray;
+let audioLevelInterval;
 
 
 // Ждем полной загрузки HTML документа
@@ -31,6 +38,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const volumeSlider = document.getElementById('volume');
     // Добавлен элемент для отображения процентов громкости
     const volumePercentDisplay = document.getElementById('volumePercent');
+    // Добавлены элементы индикатора уровня звука
+    const audioLevelIndicator = document.getElementById('audioLevelIndicator');
+    const audioLevelBar = document.getElementById('audioLevelBar');
     const timerDisplay = document.getElementById('timer');
     const statusDisplay = document.getElementById('status');
     const previewVideo = document.getElementById('preview');
@@ -40,6 +50,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnHelp = document.getElementById('btnHelp');
     const regionOverlay = document.getElementById('regionSelectionOverlay');
     const selectionRectangle = document.getElementById('selectionRectangle');
+    // Элемент для таймера обратного отсчета
+    const countdownTimerDisplay = document.getElementById('countdownTimer');
+    // Контейнер для визуализации кликов
+    const clickVisualizationsContainer = document.getElementById('clickVisualizations');
+
 
     // Добавлены элементы для пользовательского разрешения
     const customResolutionDiv = document.getElementById('customResolutionDiv');
@@ -53,6 +68,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const videoBitrateSelect = document.getElementById('videoBitrate'); // Элемент для битрейта видео
     const audioBitrateSelect = document.getElementById('audioBitrate'); // Элемент для битрейта аудио
     const includeSystemAudioCheckbox = document.getElementById('includeSystemAudio');
+    const showMouseClicksCheckbox = document.getElementById('showMouseClicks'); // Элемент для показа кликов
+    const countdownDurationSelect = document.getElementById('countdownDuration'); // Элемент для длительности отсчета
 
 
     // Инициализация AudioContext
@@ -84,6 +101,9 @@ document.addEventListener('DOMContentLoaded', function() {
     btnSettings.addEventListener('click', toggleSettingsModal); // Изменено на переключение модального окна
     btnHelp.addEventListener('click', showHelp);
     document.addEventListener('keydown', handleHotkeys);
+    // Слушатель для визуализации кликов (добавляем на весь документ)
+    document.addEventListener('click', handleMouseClick);
+
 
     // Добавлен обработчик для изменения разрешения
     resolutionSelect.addEventListener('change', function() {
@@ -131,6 +151,9 @@ document.addEventListener('DOMContentLoaded', function() {
         audioBitrateSelect.value = audioBitrate.toString(); // Загружаем выбранный битрейт аудио
         // Синхронизируем состояние чекбокса системных звуков с выбором в аудиоисточнике
          includeSystemAudioCheckbox.checked = audioSourceSelect.value === 'system' || audioSourceSelect.value === 'both';
+         showMouseClicksCheckbox.checked = showMouseClicks; // Загружаем состояние показа кликов
+         countdownDurationSelect.value = countdownDuration.toString(); // Загружаем длительность отсчета
+
 
         settingsModal.style.display = 'block';
     }
@@ -140,6 +163,9 @@ document.addEventListener('DOMContentLoaded', function() {
         recordFormat = recordFormatSelect.value;
          videoBitrate = parseInt(videoBitrateSelect.value); // Сохраняем выбранный битрейт видео
          audioBitrate = parseInt(audioBitrateSelect.value); // Сохраняем выбранный битрейт аудио
+         showMouseClicks = showMouseClicksCheckbox.checked; // Сохраняем состояние показа кликов
+         countdownDuration = parseInt(countdownDurationSelect.value); // Сохраняем длительность отсчета
+
 
         // Обновляем выбор аудиоисточника в зависимости от состояния чекбокса системных звуков
         if (includeSystemAudioCheckbox.checked) {
@@ -210,7 +236,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 alert("Пожалуйста, сначала выберите область для записи.");
                 return;
             }
-            await startRecording();
+             // Запускаем обратный отсчет перед началом записи, если он включен
+             if (countdownDuration > 0) {
+                 startCountdown();
+             } else {
+                 await startRecording(); // Если отсчет выключен, начинаем запись сразу
+             }
         } else if (isRecording && !isPaused) {
             pauseRecording();
         } else if (isRecording && isPaused) {
@@ -220,6 +251,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function startRecording() {
         try {
+            // Скрываем таймер обратного отсчета
+            countdownTimerDisplay.style.display = 'none';
+            countdownTimerDisplay.textContent = ''; // Очищаем текст
+
             const videoSource = videoSourceSelect.value;
             const resolution = resolutionSelect.value;
             const fps = parseInt(fpsSelect.value);
@@ -348,15 +383,27 @@ document.addEventListener('DOMContentLoaded', function() {
                     micGainNode = audioContext.createGain();
                     micGainNode.gain.value = micVolume;
 
-                    // Создаем пункт назначения для обработанного аудио
-                    const dest = audioContext.createMediaStreamDestination();
+                    // Подключаем анализатор для визуализации уровня звука
+                    analyser = audioContext.createAnalyser();
+                    analyser.fftSize = 256; // Размер FFT
+                    const bufferLength = analyser.frequencyBinCount;
+                    dataArray = new Uint8Array(bufferLength);
 
-                    // Подключаем микрофон -> GainNode -> пункт назначения
                     micSource.connect(micGainNode);
-                    micGainNode.connect(dest);
+                    micGainNode.connect(analyser); // Подключаем GainNode к AnalyserNode
+                    analyser.connect(audioContext.destination); // Подключаем AnalyserNode к выходному узлу AudioContext
 
-                    // Используем обработанный поток
+                    // Создаем пункт назначения для обработанного аудио для MediaRecorder
+                    const dest = audioContext.createMediaStreamDestination();
+                    micGainNode.connect(dest); // Подключаем GainNode к MediaStreamDestination
+
+                    // Используем обработанный поток из MediaStreamDestination
                     micStream = dest.stream;
+
+
+                    // Запускаем обновление индикатора уровня звука
+                    startAudioLevelUpdate();
+
 
                     // Добавляем обработчик для отслеживания состояния аудиодорожки
                     originalMicStream.getAudioTracks()[0].addEventListener('ended', () => {
@@ -408,11 +455,22 @@ document.addEventListener('DOMContentLoaded', function() {
                  }
             }
 
-
             // Проверяем, что есть хотя бы одна активная дорожка
             if (combinedStream.getTracks().length === 0) {
-                throw new Error("Нет активных дорожек для записи");
+                 // Если не удалось получить ни видео, ни аудио, выдаем ошибку
+                 if (!(audioSourceSelect.value === 'mic' || audioSourceSelect.value === 'both') || !micStream) { // Проверяем, был ли запрошен микрофон и получен ли поток
+                      throw new Error("Нет активных дорожек для записи. Пожалуйста, выберите источник видео или аудио.");
+                 }
+                 // Если есть только аудиодорожка с микрофона, но нет видеодорожки, это тоже ошибка для записи экрана
+                 if (micStream && combinedStream.getVideoTracks().length === 0) {
+                     throw new Error("Не удалось получить видеодорожку. Запись только звука не поддерживается.");
+                 }
+                 // Если есть только системные звуки, но нет видеодорожки и микрофона
+                 if (combinedStream.getAudioTracks().length > 0 && combinedStream.getVideoTracks().length === 0 && !micStream) {
+                     throw new Error("Не удалось получить видеодорожку. Запись только системных звуков не поддерживается.");
+                 }
             }
+
 
             console.log("Дорожки в объединенном потоке:");
             console.log("Видео:", combinedStream.getVideoTracks());
@@ -435,7 +493,7 @@ document.addEventListener('DOMContentLoaded', function() {
                  // Битрейт видео берем из настроек, если не "Авто", иначе примерный расчет или значение по умолчанию
                 videoBitsPerSecond: videoBitrate > 0 ? videoBitrate :
                                      (videoSource === 'region' && selectedRegion) ?
-                                     (selectedRegion.width * selectedRegion.height * fps / 10) : // Примерный расчет для области
+                                     (selectedRegion.width * selectedRegion.height * fps * 0.1) : // Примерный расчет для области
                                      (resolution === '3840x2160' ? 10000000 :
                                       resolution === '2560x1440' ? 5000000 :
                                       2500000),
@@ -451,6 +509,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
             mediaRecorder.onstop = async () => {
                 console.log("Запись остановлена. Всего фрагментов:", recordedChunks.length);
+                 // Останавливаем обновление индикатора уровня звука
+                stopAudioLevelUpdate();
+                 // Скрываем контейнер для визуализации кликов
+                clickVisualizationsContainer.style.display = 'none';
+
+
                 try {
                     if (recordedChunks.length === 0) {
                         throw new Error("Запись не содержит данных");
@@ -493,6 +557,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     if (audioContext && audioContext.state !== 'closed') {
                         await audioContext.close();
+                         // Заново инициализируем AudioContext для будущих записей
+                         audioContext = new (window.AudioContext || window.webkitAudioContext)();
                     }
                     currentStream = null;
                     recordedChunks = [];
@@ -523,6 +589,13 @@ document.addEventListener('DOMContentLoaded', function() {
             statusDisplay.textContent = 'Идет запись...';
             statusDisplay.className = 'status recording';
             console.log("Запись успешно начата");
+
+             // Показываем контейнер для визуализации кликов при старте записи
+            if (showMouseClicks) {
+                 clickVisualizationsContainer.style.display = 'block';
+            }
+
+
         } catch (error) {
             console.error('Ошибка при начале записи:', error);
             // Улучшенные сообщения об ошибках
@@ -547,10 +620,21 @@ document.addEventListener('DOMContentLoaded', function() {
              // Проверяем состояние audioContext перед закрытием
             if (audioContext && audioContext.state !== 'closed') {
                 audioContext.close().catch(e => console.error("Ошибка при закрытии AudioContext:", e));
+                 // Заново инициализируем AudioContext
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
             currentStream = null;
             recordedChunks = [];
             selectedRegion = null; // Сбрасываем выбранную область при ошибке
+             // Скрываем таймер обратного отсчета при ошибке
+             countdownTimerDisplay.style.display = 'none';
+             countdownTimerDisplay.textContent = '';
+             // Скрываем контейнер для визуализации кликов
+             clickVisualizationsContainer.style.display = 'none';
+             // Останавливаем обновление индикатора уровня звука
+             stopAudioLevelUpdate();
+
+
             updateUI();
         }
     }
@@ -561,6 +645,10 @@ document.addEventListener('DOMContentLoaded', function() {
         isPaused = true;
         pauseStartTime = Date.now();
         clearInterval(timerInterval);
+         // Останавливаем обновление индикатора уровня звука при паузе
+        stopAudioLevelUpdate();
+
+
         try {
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 mediaRecorder.requestData();
@@ -589,6 +677,9 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error("Ошибка при возобновлении MediaRecorder:", e);
         }
         timerInterval = setInterval(updateTimer, 1000);
+         // Возобновляем обновление индикатора уровня звука при возобновлении
+        startAudioLevelUpdate();
+
         statusDisplay.textContent = 'Идет запись...';
         statusDisplay.className = 'status recording';
         updateUI();
@@ -600,6 +691,12 @@ document.addEventListener('DOMContentLoaded', function() {
         isRecording = false;
         isPaused = false;
         clearInterval(timerInterval);
+         // Останавливаем обновление индикатора уровня звука
+        stopAudioLevelUpdate();
+         // Скрываем контейнер для визуализации кликов
+        clickVisualizationsContainer.style.display = 'none';
+
+
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
             try {
                 mediaRecorder.stop();
@@ -620,6 +717,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if (audioContext && audioContext.state !== 'closed') {
              audioContext.close().catch(e => console.error("Ошибка при закрытии AudioContext:", e));
+             // Заново инициализируем AudioContext
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
         currentStream = null;
         recordedChunks = [];
@@ -628,6 +727,13 @@ document.addEventListener('DOMContentLoaded', function() {
         statusDisplay.textContent = 'Готов к записи';
         statusDisplay.className = 'status ready';
         previewVideo.style.display = 'none';
+         // Очищаем контейнер для визуализации кликов
+        clickVisualizationsContainer.innerHTML = '';
+
+         // Сбрасываем индикатор уровня звука
+         if (audioLevelBar) {
+             audioLevelBar.style.width = '0%';
+         }
     }
 
     function updateTimer() {
@@ -663,8 +769,15 @@ document.addEventListener('DOMContentLoaded', function() {
         // Отключаем кнопку настроек во время записи
         btnSettings.disabled = isActivelyRecording;
 
+        // Скрываем индикатор уровня звука, если аудиоисточник не микрофон
+        if (audioSourceSelect.value === 'mic' || audioSourceSelect.value === 'both') {
+             audioLevelIndicator.style.display = 'inline-block';
+        } else {
+             audioLevelIndicator.style.display = 'none';
+        }
 
-        if (statusDisplay.className !== 'status pending' && statusDisplay.className !== 'status error' && statusDisplay.className !== 'status selecting-region') {
+
+        if (statusDisplay.className !== 'status pending' && statusDisplay.className !== 'status error' && statusDisplay.className !== 'status selecting-region' && countdownTimerDisplay.style.display !== 'block') {
             if (isRecording) {
                 statusDisplay.textContent = isPaused ? 'Запись приостановлена' : 'Идет запись...';
                 statusDisplay.className = isPaused ? 'status paused' : 'status recording';
@@ -764,25 +877,101 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Функции таймера обратного отсчета
+    function startCountdown() {
+        countdownTimerDisplay.style.display = 'block';
+        let timeLeft = countdownDuration;
+        countdownTimerDisplay.textContent = timeLeft;
 
-    // function showSettings() {
-    //     alert("Настройки пока не реализованы.");
-    // } // Эта функция теперь реализована выше
+        const countdownInterval = setInterval(() => {
+            timeLeft--;
+            if (timeLeft > 0) {
+                countdownTimerDisplay.textContent = timeLeft;
+            } else {
+                clearInterval(countdownInterval);
+                startRecording(); // Начинаем запись после отсчета
+            }
+        }, 1000);
+    }
+
+    // Функции визуализации кликов мыши
+    function handleMouseClick(e) {
+         // Визуализируем клик только если включена настройка и идет запись
+        if (showMouseClicks && isRecording && !isPaused) {
+            const clickIndicator = document.createElement('div');
+            clickIndicator.style.position = 'fixed';
+            clickIndicator.style.left = `${e.clientX}px`;
+            clickIndicator.style.top = `${e.clientY}px`;
+            clickIndicator.style.width = '20px';
+            clickIndicator.style.height = '20px';
+            clickIndicator.style.borderRadius = '50%';
+            clickIndicator.style.backgroundColor = 'rgba(255, 0, 0, 0.7)'; // Красный полупрозрачный кружок
+            clickIndicator.style.pointerEvents = 'none'; // Важно, чтобы не перехватывал клики
+            clickIndicator.style.zIndex = '10'; // Поверх других элементов, но под оверлеем отсчета
+
+             // Добавляем простую анимацию исчезновения
+            clickIndicator.style.transition = 'opacity 0.5s ease-out';
+            clickVisualizationsContainer.appendChild(clickIndicator);
+
+            // Удаляем индикатор через некоторое время
+            setTimeout(() => {
+                clickIndicator.style.opacity = '0';
+                clickIndicator.addEventListener('transitionend', () => {
+                     clickVisualizationsContainer.removeChild(clickIndicator);
+                });
+            }, 500); // Индикатор будет виден 0.5 секунды
+
+        }
+    }
+
+     // Функции индикатора уровня звука микрофона
+     function startAudioLevelUpdate() {
+         if (analyser && dataArray) {
+             audioLevelInterval = setInterval(updateAudioLevel, 100); // Обновляем каждые 100 мс
+         }
+     }
+
+     function stopAudioLevelUpdate() {
+         clearInterval(audioLevelInterval);
+         if (audioLevelBar) {
+             audioLevelBar.style.width = '0%'; // Сбрасываем полосу при остановке
+         }
+     }
+
+     function updateAudioLevel() {
+         if (analyser && dataArray) {
+             analyser.getByteFrequencyData(dataArray);
+             // Находим средний уровень громкости
+             let sum = 0;
+             for (let i = 0; i < dataArray.length; i++) {
+                 sum += dataArray[i];
+             }
+             const average = sum / dataArray.length;
+             // Масштабируем значение от 0-255 до 0-100%
+             const level = Math.min(100, Math.max(0, average * (100 / 255)));
+
+             if (audioLevelBar) {
+                 audioLevelBar.style.width = `${level}%`;
+             }
+         }
+     }
+
 
     function showHelp() {
         alert("Справка по Веб-рекордеру экрана\n\n" +
             "1. Выберите источник видео (Весь экран, Окно приложения или Произвольная область).\n" +
             "   - Если выбрана Произвольная область, нарисуйте прямоугольник на экране для выбора области записи.\n" +
             "2. Выберите разрешение и частоту кадров (для режимов Весь экран и Окно приложения), либо выберите 'Пользовательское' и введите свои значения.\n" +
-            "3. Выберите источник звука (микрофон или без звука). Перемещайте ползунок для настройки громкости микрофона.\n" +
-            "4. Нажмите 'Начать запись' или Alt+R. Появится диалог выбора источника от браузера - выберите и подтвердите.\n" +
+            "3. Выберите источник звука (микрофон или без звука). Перемещайте ползунок для настройки громкости микрофона. Рядом отображается визуальный индикатор уровня звука.\n" +
+            "4. Нажмите 'Начать запись' или Alt+R. Если включен таймер обратного отсчета в настройках, начнется отсчет перед записью.\n" +
             "5. Для паузы нажмите 'Пауза записи' или Alt+S\n" +
-            "6. Для остановки нажмите 'Остановить запись' или Alt+T. Файл будет автоматически скачан.\n\n" +
+            "6. Для остановки нажмите 'Остановить запись' или Alt+T. Файл будет автоматически скачан.\n" +
+             "7. В 'Настройках' можно изменить формат записи, битрейт видео и аудио, включить/отключить системные звуки и визуализацию кликов мыши, а также настроить таймер обратного отсчета.\n\n" +
             "Примечание: Запись системных звуков через стандартные веб-API ненадежна и может не работать. Запись произвольной области может работать не идеально в некоторых браузерах из-за ограничений API.");
     }
 
     function handleHotkeys(e) {
-        // Игнорируем горячие клавиши, если фокус находится на поле ввода или если оверлей выбора области активен
+        // Игнорируем горячие клавиши, если фокус находится на поле ввода или если оверлей выбора области или модальное окно настроек активны
         const activeElement = document.activeElement;
         if (activeElement.tagName === 'INPUT' || activeElement.tagName === 'SELECT' || activeElement.tagName === 'TEXTAREA' || regionOverlay.style.display === 'block' || settingsModal.style.display === 'block') {
             return;
@@ -811,12 +1000,23 @@ document.addEventListener('DOMContentLoaded', function() {
                     break;
             }
         }
-        // Обработка Esc для закрытия оверлея выбора области уже добавлена отдельно
-         // Добавляем обработку Esc для закрытия модального окна настроек
-         if (e.key === 'Escape' && settingsModal.style.display === 'block') {
-             e.preventDefault();
-             hideSettings();
-         }
+        // Обработка Esc для закрытия оверлея выбора области и модального окна настроек
+        if (e.key === 'Escape') {
+            if (regionOverlay.style.display === 'block') {
+                e.preventDefault();
+                regionOverlay.style.display = 'none';
+                selectionRectangle.style.display = 'none'; // Скрываем прямоугольник
+                selectionStart = null;
+                selectedRegion = null; // Сбрасываем выбранную область при отмене
+                statusDisplay.textContent = 'Выбор области отменен';
+                statusDisplay.className = 'status ready';
+                videoSourceSelect.value = 'screen'; // Возвращаем источник на "Весь экран"
+                updateUI(); // Обновляем UI после отмены
+            } else if (settingsModal.style.display === 'block') {
+                 e.preventDefault();
+                 hideSettings();
+            }
+        }
     }
 
 
@@ -824,5 +1024,9 @@ document.addEventListener('DOMContentLoaded', function() {
      if (resolutionSelect.value !== 'custom') {
         customResolutionDiv.style.display = 'none';
     }
+
+     // Изначально скрываем контейнер для визуализации кликов
+    clickVisualizationsContainer.style.display = 'none';
+
 
 });
