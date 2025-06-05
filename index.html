@@ -51,7 +51,8 @@
                 <option value="both">Микрофон + Системные звуки (Экспериментально)</option>
             </select>
             <input type="range" id="volume" min="0" max="2" step="0.1" value="1">
-            <label for="volume">Громкость микрофона (0-200%)</label>
+            <label for="volume">Громкость микрофона:</label> <!-- Изменен текст label -->
+            <span id="volumePercent">100%</span> <!-- Добавлен элемент для отображения процентов -->
         </div>
         <div id="timer">00:00:00</div>
         <div id="status" class="status ready">Готов к записи</div>

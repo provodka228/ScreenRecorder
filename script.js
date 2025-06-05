@@ -22,6 +22,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const fpsSelect = document.getElementById('fps');
     const audioSourceSelect = document.getElementById('audioSource');
     const volumeSlider = document.getElementById('volume');
+    // Добавлен элемент для отображения процентов громкости
+    const volumePercentDisplay = document.getElementById('volumePercent');
     const timerDisplay = document.getElementById('timer');
     const statusDisplay = document.getElementById('status');
     const previewVideo = document.getElementById('preview');
@@ -46,8 +48,14 @@ document.addEventListener('DOMContentLoaded', function() {
         if (micGainNode) {
             micGainNode.gain.value = micVolume;
         }
+        // Обновляем отображение процентов громкости
+        volumePercentDisplay.textContent = `${Math.round(micVolume * 100)}%`;
         console.log("Громкость микрофона установлена на:", micVolume);
     });
+
+    // Устанавливаем начальное значение процентов при загрузке
+    volumePercentDisplay.textContent = `${Math.round(micVolume * 100)}%`;
+
 
     // Проверка поддержки API
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
@@ -621,6 +629,7 @@ document.addEventListener('DOMContentLoaded', function() {
             videoSourceSelect.value = 'screen';
         }
     });
+
     // Изначально скрываем customResolutionDiv, если выбрано не 'custom'
      if (resolutionSelect.value !== 'custom') {
         customResolutionDiv.style.display = 'none';
