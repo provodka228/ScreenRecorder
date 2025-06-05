@@ -16,6 +16,8 @@ let micVolume = 1.0; // По умолчанию громкость 100%
 
 // Переменные для настроек
 let recordFormat = 'video/webm;codecs=vp9,opus'; // Формат записи по умолчанию
+let videoBitrate = 2500000; // Битрейт видео по умолчанию (2.5 Mbps)
+let audioBitrate = 128000; // Битрейт аудио по умолчанию (128 Kbps)
 let includeSystemAudio = false; // Включать ли системные звуки (изначально false, переопределится из HTML)
 
 
@@ -48,6 +50,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const settingsModal = document.getElementById('settingsModal');
     const closeButton = settingsModal.querySelector('.close-button');
     const recordFormatSelect = document.getElementById('recordFormat');
+    const videoBitrateSelect = document.getElementById('videoBitrate'); // Элемент для битрейта видео
+    const audioBitrateSelect = document.getElementById('audioBitrate'); // Элемент для битрейта аудио
     const includeSystemAudioCheckbox = document.getElementById('includeSystemAudio');
 
 
@@ -77,7 +81,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Слушатели событий
     btnStart.addEventListener('click', toggleRecording);
     btnStop.addEventListener('click', stopRecording);
-    btnSettings.addEventListener('click', showSettings);
+    btnSettings.addEventListener('click', toggleSettingsModal); // Изменено на переключение модального окна
     btnHelp.addEventListener('click', showHelp);
     document.addEventListener('keydown', handleHotkeys);
 
@@ -112,9 +116,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
     // Логика модального окна настроек
+    function toggleSettingsModal() {
+        if (settingsModal.style.display === 'block') {
+            hideSettings();
+        } else {
+            showSettings();
+        }
+    }
+
     function showSettings() {
         // Загружаем текущие настройки в модальное окно
         recordFormatSelect.value = recordFormat;
+        videoBitrateSelect.value = videoBitrate.toString(); // Загружаем выбранный битрейт видео
+        audioBitrateSelect.value = audioBitrate.toString(); // Загружаем выбранный битрейт аудио
         // Синхронизируем состояние чекбокса системных звуков с выбором в аудиоисточнике
          includeSystemAudioCheckbox.checked = audioSourceSelect.value === 'system' || audioSourceSelect.value === 'both';
 
@@ -124,6 +138,9 @@ document.addEventListener('DOMContentLoaded', function() {
     function hideSettings() {
         // Сохраняем настройки из модального окна
         recordFormat = recordFormatSelect.value;
+         videoBitrate = parseInt(videoBitrateSelect.value); // Сохраняем выбранный битрейт видео
+         audioBitrate = parseInt(audioBitrateSelect.value); // Сохраняем выбранный битрейт аудио
+
         // Обновляем выбор аудиоисточника в зависимости от состояния чекбокса системных звуков
         if (includeSystemAudioCheckbox.checked) {
             if (audioSourceSelect.value === 'mic') {
@@ -142,7 +159,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         // Проверяем, поддерживается ли выбранный формат
         if (!MediaRecorder.isTypeSupported(recordFormat)) {
-            alert(`Ваш браузер не поддерживает формат записи: ${recordFormat}. Будет использован формат по умолчанию.`);
+            console.warn(`Выбранный формат записи: ${recordFormat} не поддерживается. Будет использован формат по умолчанию.`);
              recordFormat = 'video/webm'; // Устанавливаем формат по умолчанию, который должен поддерживаться
              recordFormatSelect.value = recordFormat; // Обновляем выпадающий список в модальном окне
         }
@@ -204,7 +221,6 @@ document.addEventListener('DOMContentLoaded', function() {
     async function startRecording() {
         try {
             const videoSource = videoSourceSelect.value;
-            // const audioSource = audioSourceSelect.value; // Теперь используем includeSystemAudio и audioSourceSelect
             const resolution = resolutionSelect.value;
             const fps = parseInt(fpsSelect.value);
 
@@ -404,11 +420,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
             // 4. Проверяем поддерживаемые форматы
-            // const mimeType = [
-            //     'video/webm;codecs=vp9,opus',
-            //     'video/webm;codecs=vp8,opus',
-            //     'video/webm'
-            // ].find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
              // Используем формат, выбранный в настройках
             const mimeType = MediaRecorder.isTypeSupported(recordFormat) ? recordFormat : 'video/webm';
             if (mimeType !== recordFormat) {
@@ -421,13 +432,14 @@ document.addEventListener('DOMContentLoaded', function() {
             recordedChunks = [];
             mediaRecorder = new MediaRecorder(combinedStream, {
                 mimeType: mimeType,
-                 // Битрейт видео может зависеть от выбранной области или разрешения
-                videoBitsPerSecond: (videoSource === 'region' && selectedRegion) ?
-                                     (selectedRegion.width * selectedRegion.height * fps / 10) : // Примерный расчет битрейта для области
+                 // Битрейт видео берем из настроек, если не "Авто", иначе примерный расчет или значение по умолчанию
+                videoBitsPerSecond: videoBitrate > 0 ? videoBitrate :
+                                     (videoSource === 'region' && selectedRegion) ?
+                                     (selectedRegion.width * selectedRegion.height * fps / 10) : // Примерный расчет для области
                                      (resolution === '3840x2160' ? 10000000 :
                                       resolution === '2560x1440' ? 5000000 :
                                       2500000),
-                audioBitsPerSecond: 128000   // 128 Kbps
+                audioBitsPerSecond: audioBitrate // Битрейт аудио из настроек
             });
 
             mediaRecorder.ondataavailable = event => {
@@ -652,11 +664,7 @@ document.addEventListener('DOMContentLoaded', function() {
         btnSettings.disabled = isActivelyRecording;
 
 
-        if (!isRecording) {
-            previewVideo.style.display = 'none';
-        }
-
-        if (statusDisplay.className !== 'status pending' && statusDisplay.className !== 'status error') {
+        if (statusDisplay.className !== 'status pending' && statusDisplay.className !== 'status error' && statusDisplay.className !== 'status selecting-region') {
             if (isRecording) {
                 statusDisplay.textContent = isPaused ? 'Запись приостановлена' : 'Идет запись...';
                 statusDisplay.className = isPaused ? 'status paused' : 'status recording';

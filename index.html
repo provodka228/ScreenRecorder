@@ -74,26 +74,44 @@
     </div>
 
     <!-- Модальное окно настроек -->
-    <div id="settingsModal" class="modal" style="display: none;">
-        <div class="modal-content">
-            <span class="close-button">&times;</span>
-            <h2>Настройки</h2>
-            <div class="setting-item">
-                <label for="recordFormat">Формат записи:</label>
-                <select id="recordFormat">
-                    <option value="video/webm;codecs=vp9,opus">WebM (VP9 + Opus)</option>
-                    <option value="video/webm;codecs=vp8,opus">WebM (VP8 + Opus)</option>
-                    <option value="video/webm">WebM (По умолчанию)</option>
-                    <!-- Добавьте другие форматы, если планируете их поддерживать -->
-                </select>
-            </div>
-            <div class="setting-item">
-                <label for="includeSystemAudio">Включить системные звуки:</label>
-                <input type="checkbox" id="includeSystemAudio">
-            </div>
-            <!-- Здесь можно добавить другие настройки -->
+<div id="settingsModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close-button">&times;</span>
+        <h2>Настройки</h2>
+        <div class="setting-item">
+            <label for="recordFormat">Формат записи:</label>
+            <select id="recordFormat">
+                <option value="video/webm;codecs=vp9,opus">WebM (VP9 + Opus)</option>
+                <option value="video/webm;codecs=vp8,opus">WebM (VP8 + Opus)</option>
+                 <option value="video/webm">WebM (По умолчанию)</option>
+                <!-- Добавьте другие форматы, если планируете их поддерживать -->
+            </select>
         </div>
+        <div class="setting-item">
+            <label for="videoBitrate">Битрейт видео (bps):</label>
+            <select id="videoBitrate">
+                <option value="1000000">1 Mbps</option>
+                <option value="2500000" selected>2.5 Mbps (Рекомендуется)</option>
+                <option value="5000000">5 Mbps (2K)</option>
+                <option value="10000000">10 Mbps (4K)</option>
+                 <option value="0">Авто</option> <!-- Опция для автоматического битрейта -->
+            </select>
+        </div>
+        <div class="setting-item">
+            <label for="audioBitrate">Битрейт аудио (bps):</label>
+            <select id="audioBitrate">
+                <option value="64000">64 Kbps</option>
+                <option value="128000" selected>128 Kbps (Рекомендуется)</option>
+                <option value="192000">192 Kbps</option>
+            </select>
+        </div>
+        <div class="setting-item">
+            <label for="includeSystemAudio">Включить системные звуки:</label>
+            <input type="checkbox" id="includeSystemAudio">
+        </div>
+         <!-- Здесь можно добавить другие настройки -->
     </div>
+</div>
     <!-- Конец модального окна настроек -->
 
     <script src="script.js"></script>
