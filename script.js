@@ -76,24 +76,49 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const videoSource = videoSourceSelect.value;
             const audioSource = audioSourceSelect.value;
+            const resolution = resolutionSelect.value;
             
             console.log("Начало процесса записи...");
             statusDisplay.textContent = 'Запрашиваем доступ к медиа...';
             statusDisplay.className = 'status pending';
+
+            // Определяем параметры разрешения в зависимости от выбора
+            let width, height;
+            switch(resolution) {
+                case '3840x2160': // 4K
+                    width = { ideal: 3840 };
+                    height = { ideal: 2160 };
+                    break;
+                case '2560x1440': // 2K
+                    width = { ideal: 2560 };
+                    height = { ideal: 1440 };
+                    break;
+                case '1920x1080': // Full HD
+                    width = { ideal: 1920 };
+                    height = { ideal: 1080 };
+                    break;
+                case '1280x720': // HD
+                    width = { ideal: 1280 };
+                    height = { ideal: 720 };
+                    break;
+                default: // По умолчанию Full HD
+                    width = { ideal: 1920 };
+                    height = { ideal: 1080 };
+            }
 
             // 1. Получаем видеопоток с экрана
             const displayMediaConstraints = {
                 video: {
                     mediaSource: videoSource === 'screen' ? 'screen' : 
                               videoSource === 'window' ? 'window' : 'screen',
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                    frameRate: { ideal: 30, max: 60 }
+                    width: width,
+                    height: height,
+                    frameRate: { ideal: parseInt(fpsSelect.value), max: 60 }
                 },
                 audio: audioSource === 'system' || audioSource === 'both'
             };
 
-            console.log("Запрашиваем доступ к экрану...");
+            console.log("Запрашиваем доступ к экрану с параметрами:", displayMediaConstraints);
             const screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaConstraints)
                 .catch(err => {
                     console.error("Ошибка getDisplayMedia:", err);
@@ -219,7 +244,9 @@ document.addEventListener('DOMContentLoaded', function() {
             recordedChunks = [];
             mediaRecorder = new MediaRecorder(combinedStream, {
                 mimeType: mimeType,
-                videoBitsPerSecond: 2500000, // 2.5 Mbps
+                videoBitsPerSecond: resolution === '3840x2160' ? 10000000 : // 10 Mbps для 4K
+                                    resolution === '2560x1440' ? 5000000 :  // 5 Mbps для 2K
+                                    2500000, // 2.5 Mbps для остальных
                 audioBitsPerSecond: 128000   // 128 Kbps
             });
 
@@ -524,7 +551,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function showHelp() {
         alert("Справка по Веб-рекордеру экрана\n\n" +
             "1. Выберите источник видео (экран или окно)\n" +
-            "2. Выберите разрешение и частоту кадров\n" +
+            "2. Выберите разрешение (включая 4K для больших экранов) и частоту кадров\n" +
             "3. Выберите источник звука (микрофон или без звука).\n" +
             "4. Нажмите 'Начать запись' или Alt+R. Появится диалог выбора источника от браузера - выберите и подтвердите.\n" +
             "5. Для паузы нажмите 'Пауза записи' или Alt+S\n" +
