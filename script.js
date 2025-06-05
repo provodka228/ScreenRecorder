@@ -7,7 +7,7 @@ let totalPausedTime = 0;
 let timerInterval;
 let isRecording = false;
 let isPaused = false;
-let selectedRegion = null;
+let selectedRegion = null; // Здесь будет храниться выбранная область {x, y, width, height}
 let selectionStart = null;
 let currentStream;
 let audioContext;
@@ -56,7 +56,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Устанавливаем начальное значение процентов при загрузке
     volumePercentDisplay.textContent = `${Math.round(micVolume * 100)}%`;
 
-
     // Проверка поддержки API
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
         alert("Ваш браузер не поддерживает запись экрана");
@@ -77,8 +76,25 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             customResolutionDiv.style.display = 'none';
         }
-        if (this.value === 'custom') {
-             // Не выводим alert, так как функциональность уже реализована
+    });
+
+    // Обработчик изменения источника видео для выбора области
+    videoSourceSelect.addEventListener('change', function() {
+        if (this.value === 'region') {
+            // Скрываем выбор разрешения и FPS при выборе области
+            resolutionSelect.disabled = true;
+            fpsSelect.disabled = true;
+            customResolutionDiv.style.display = 'none'; // Скрываем пользовательское разрешение
+            showRegionSelectionOverlay(); // Показываем оверлей для выбора области
+        } else {
+             // Включаем выбор разрешения и FPS, если выбрано не "region"
+            resolutionSelect.disabled = false;
+            fpsSelect.disabled = false;
+             if (resolutionSelect.value === 'custom') {
+                customResolutionDiv.style.display = 'block';
+            }
+             // Сбрасываем выбранную область при смене источника видео
+            selectedRegion = null;
         }
     });
 
@@ -89,6 +105,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- Основные функции записи ---
     async function toggleRecording() {
         if (!isRecording) {
+             if (videoSourceSelect.value === 'region' && selectedRegion === null) {
+                alert("Пожалуйста, сначала выберите область для записи.");
+                return;
+            }
             await startRecording();
         } else if (isRecording && !isPaused) {
             pauseRecording();
@@ -108,9 +128,22 @@ document.addEventListener('DOMContentLoaded', function() {
             statusDisplay.textContent = 'Запрашиваем доступ к медиа...';
             statusDisplay.className = 'status pending';
 
+            // Определяем параметры видеопотока
+            let videoConstraints = {
+                mediaSource: videoSource === 'screen' ? 'screen' :
+                          videoSource === 'window' ? 'window' : 'screen',
+                 frameRate: { ideal: fps, max: 60 }
+            };
+
             // Определяем параметры разрешения в зависимости от выбора
-            let width, height;
-            if (resolution === 'custom') {
+            if (videoSource === 'region' && selectedRegion) {
+                 // Для записи области используем выбранные размеры
+                 videoConstraints.width = { ideal: selectedRegion.width };
+                 videoConstraints.height = { ideal: selectedRegion.height };
+                 // Указываем координаты начальной точки захвата (экспериментально и может не поддерживаться всеми браузерами)
+                 // Добавление cropTo: selectedRegion может помочь, но поддержка ограничена.
+                 // videoConstraints.cropTo = selectedRegion; // Экспериментальная опция
+            } else if (resolution === 'custom') {
                 const customWidth = parseInt(customWidthInput.value);
                 const customHeight = parseInt(customHeightInput.value);
                 if (isNaN(customWidth) || isNaN(customHeight) || customWidth <= 0 || customHeight <= 0) {
@@ -120,44 +153,37 @@ document.addEventListener('DOMContentLoaded', function() {
                     updateUI();
                     return;
                 }
-                width = { ideal: customWidth };
-                height = { ideal: customHeight };
+                videoConstraints.width = { ideal: customWidth };
+                videoConstraints.height = { ideal: customHeight };
             } else {
                 switch(resolution) {
                     case '3840x2160': // 4K
-                        width = { ideal: 3840 };
-                        height = { ideal: 2160 };
+                        videoConstraints.width = { ideal: 3840 };
+                        videoConstraints.height = { ideal: 2160 };
                         break;
                     case '2560x1440': // 2K
-                        width = { ideal: 2560 };
-                        height = { ideal: 1440 };
+                        videoConstraints.width = { ideal: 2560 };
+                        videoConstraints.height = { ideal: 1440 };
                         break;
                     case '1920x1080': // Full HD
-                        width = { ideal: 1920 };
-                        height = { ideal: 1080 };
+                        videoConstraints.width = { ideal: 1920 };
+                        videoConstraints.height = { ideal: 1080 };
                         break;
                     case '1280x720': // HD
-                        width = { ideal: 1280 };
-                        height = { ideal: 720 };
+                        videoConstraints.width = { ideal: 1280 };
+                        videoConstraints.height = { ideal: 720 };
                         break;
                     default: // По умолчанию Full HD
-                        width = { ideal: 1920 };
-                        height = { ideal: 1080 };
+                        videoConstraints.width = { ideal: 1920 };
+                        videoConstraints.height = { ideal: 1080 };
                 }
             }
 
-
-            // 1. Получаем видеопоток с экрана
             const displayMediaConstraints = {
-                video: {
-                    mediaSource: videoSource === 'screen' ? 'screen' :
-                              videoSource === 'window' ? 'window' : 'screen',
-                    width: width,
-                    height: height,
-                    frameRate: { ideal: fps, max: 60 }
-                },
+                video: videoConstraints,
                 audio: audioSource === 'system' || audioSource === 'both'
             };
+
 
             console.log("Запрашиваем доступ к экрану с параметрами:", displayMediaConstraints);
             const screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaConstraints)
@@ -166,10 +192,47 @@ document.addEventListener('DOMContentLoaded', function() {
                     throw err;
                 });
 
-            // Проверка видеодорожки
+             // Если выбран режим "region", нам нужно обрезать поток
+             let finalVideoStream = screenStream.getVideoTracks()[0];
+             if (videoSource === 'region' && selectedRegion) {
+                 // ВАЖНО: Обрезка потока на стороне браузера (с помощью cropTo) очень ограничена в поддержке.
+                 // Более надежный подход - обработка после записи или использование более низкоуровневых API, если доступно.
+                 // Текущая реализация getDisplayMedia с cropTo может не работать как ожидается.
+                 // Для демонстрации добавим опцию, но имейте в виду ограничения.
+                  if (finalVideoStream && 'cropTo' in finalVideoStream.getSettings()) {
+                      try {
+                           await finalVideoStream.applyConstraints({
+                              advanced: [{
+                                  cropTo: {
+                                     x: selectedRegion.x,
+                                     y: selectedRegion.y,
+                                     width: selectedRegion.width,
+                                     height: selectedRegion.height
+                                  }
+                              }]
+                           });
+                           console.log("Применены ограничения обрезки к видеодорожке.");
+                      } catch (applyError) {
+                           console.warn("Не удалось применить ограничения обрезки:", applyError);
+                           alert("Внимание: Браузер не поддерживает точную запись выбранной области. Будет записан весь экран.");
+                           selectedRegion = null; // Сбрасываем выбранную область, чтобы не вводить пользователя в заблуждение
+                           videoSourceSelect.value = 'screen'; // Возвращаем источник на "Весь экран"
+                           updateUI(); // Обновляем интерфейс
+                      }
+                  } else {
+                      console.warn("Браузер не поддерживает обрезку потока (cropTo). Будет записан весь экран.");
+                      alert("Внимание: Ваш браузер не поддерживает запись выбранной области. Будет записан весь экран.");
+                      selectedRegion = null; // Сбрасываем выбранную область
+                      videoSourceSelect.value = 'screen'; // Возвращаем источник на "Весь экран"
+                       updateUI(); // Обновляем интерфейс
+                  }
+            }
+
+
+            // Проверка видеодорожки после возможной обрезки
             const videoTracks = screenStream.getVideoTracks();
             if (videoTracks.length === 0) {
-                throw new Error("Не удалось получить видеодорожку");
+                throw new Error("Не удалось получить видеодорожку после попытки обрезки");
             }
 
             // Добавляем обработчик для отслеживания состояния видеодорожки
@@ -236,10 +299,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // 3. Создаем объединенный поток
             const combinedStream = new MediaStream();
-            // Добавляем видеодорожку
-            videoTracks.forEach(track => {
-                combinedStream.addTrack(track);
-            });
+            // Добавляем видеодорожку (теперь это может быть обрезанная дорожка)
+            combinedStream.addTrack(finalVideoStream);
 
             // Добавляем аудиодорожки микрофона (если есть)
             if (micStream) {
@@ -270,6 +331,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log("Видео:", combinedStream.getVideoTracks());
             console.log("Аудио:", combinedStream.getAudioTracks());
 
+
             // 4. Проверяем поддерживаемые форматы
             const mimeType = [
                 'video/webm;codecs=vp9,opus',
@@ -282,9 +344,12 @@ document.addEventListener('DOMContentLoaded', function() {
             recordedChunks = [];
             mediaRecorder = new MediaRecorder(combinedStream, {
                 mimeType: mimeType,
-                videoBitsPerSecond: resolution === '3840x2160' ? 10000000 : // 10 Mbps для 4K
-                                    resolution === '2560x1440' ? 5000000 :  // 5 Mbps для 2K
-                                    2500000, // 2.5 Mbps для остальных
+                 // Битрейт видео может зависеть от выбранной области или разрешения
+                videoBitsPerSecond: (videoSource === 'region' && selectedRegion) ?
+                                     (selectedRegion.width * selectedRegion.height * fps / 10) : // Примерный расчет битрейта для области
+                                     (resolution === '3840x2160' ? 10000000 :
+                                      resolution === '2560x1440' ? 5000000 :
+                                      2500000),
                 audioBitsPerSecond: 128000   // 128 Kbps
             });
 
@@ -342,6 +407,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     currentStream = null;
                     recordedChunks = [];
+                    selectedRegion = null; // Сбрасываем выбранную область
                     timerDisplay.textContent = '00:00:00';
                     updateUI();
                 }
@@ -395,6 +461,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             currentStream = null;
             recordedChunks = [];
+            selectedRegion = null; // Сбрасываем выбранную область при ошибке
             updateUI();
         }
     }
@@ -467,6 +534,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         currentStream = null;
         recordedChunks = [];
+        selectedRegion = null; // Сбрасываем выбранную область
         timerDisplay.textContent = '00:00:00';
         statusDisplay.textContent = 'Готов к записи';
         statusDisplay.className = 'status ready';
@@ -493,14 +561,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const isActivelyRecording = isRecording && !isPaused;
 
-        // Теперь отключаем customResolutionDiv только при активной записи
         videoSourceSelect.disabled = isActivelyRecording;
-        resolutionSelect.disabled = isActivelyRecording;
-        fpsSelect.disabled = isActivelyRecording;
+        // Отключаем разрешение и FPS только при активной записи или когда выбран режим "region"
+        resolutionSelect.disabled = isActivelyRecording || videoSourceSelect.value === 'region';
+        fpsSelect.disabled = isActivelyRecording || videoSourceSelect.value === 'region';
         audioSourceSelect.disabled = isActivelyRecording;
         volumeSlider.disabled = isActivelyRecording;
-        customWidthInput.disabled = isActivelyRecording || resolutionSelect.value !== 'custom';
-        customHeightInput.disabled = isActivelyRecording || resolutionSelect.value !== 'custom';
+        customWidthInput.disabled = isActivelyRecording || resolutionSelect.value !== 'custom' || videoSourceSelect.value === 'region';
+        customHeightInput.disabled = isActivelyRecording || resolutionSelect.value !== 'custom' || videoSourceSelect.value === 'region';
 
 
         if (!isRecording) {
@@ -519,8 +587,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Функции выбора области
+
     function showRegionSelectionOverlay() {
         regionOverlay.style.display = 'block';
+        statusDisplay.textContent = 'Выберите область для записи...';
+        statusDisplay.className = 'status selecting-region';
     }
 
     function startRegionSelection(e) {
@@ -530,6 +601,7 @@ document.addEventListener('DOMContentLoaded', function() {
         selectionRectangle.style.top = `${e.clientY}px`;
         selectionRectangle.style.width = '0px';
         selectionRectangle.style.height = '0px';
+        selectionRectangle.style.display = 'block'; // Показываем прямоугольник
     }
 
     function updateRegionSelection(e) {
@@ -538,34 +610,71 @@ document.addEventListener('DOMContentLoaded', function() {
         const height = Math.abs(e.clientY - selectionStart.y);
         const left = Math.min(e.clientX, selectionStart.x);
         const top = Math.min(e.clientY, selectionStart.y);
-        selectionRectangle.style.left = `${left}px`;
-        selectionRectangle.style.top = `${top}px`;
+
+        // Ограничиваем размеры прямоугольника пределами оверлея (экрана)
+        const maxLeft = window.innerWidth - width;
+        const maxTop = window.innerHeight - height;
+
+        selectionRectangle.style.left = `${Math.max(0, Math.min(left, maxLeft))}px`;
+        selectionRectangle.style.top = `${Math.max(0, Math.min(top, maxTop))}px`;
         selectionRectangle.style.width = `${width}px`;
         selectionRectangle.style.height = `${height}px`;
     }
 
     function endRegionSelection(e) {
         if (!selectionStart) return;
-        const width = Math.abs(e.clientX - selectionStart.x);
-        const height = Math.abs(e.clientY - selectionStart.y);
-        if (width > 10 && height > 10) {
+
+        const finalX = Math.min(e.clientX, selectionStart.x);
+        const finalY = Math.min(e.clientY, selectionStart.y);
+        const finalWidth = Math.abs(e.clientX - selectionStart.x);
+        const finalHeight = Math.abs(e.clientY - selectionStart.y);
+
+        if (finalWidth > 10 && finalHeight > 10) { // Проверяем, что область достаточно большая
             selectedRegion = {
-                x: Math.min(e.clientX, selectionStart.x),
-                y: Math.min(e.clientY, selectionStart.y),
-                width: width,
-                height: height
+                x: finalX,
+                y: finalY,
+                width: finalWidth,
+                height: finalHeight
             };
-            alert(`Выбрана область: ${width}x${height} at (${selectedRegion.x},${selectedRegion.y}).\n\nЗапись выбранной области пока не реализована.`);
+            console.log(`Выбрана область: ${finalWidth}x${finalHeight} at (${selectedRegion.x},${selectedRegion.y}).`);
+            statusDisplay.textContent = `Выбрана область: ${finalWidth}x${finalHeight}`;
+            statusDisplay.className = 'status ready';
+
         } else {
             alert("Выбранная область слишком мала.");
+            selectedRegion = null; // Сбрасываем выбранную область
+            statusDisplay.textContent = 'Выбор области отменен';
+            statusDisplay.className = 'status ready';
         }
+
         selectionStart = null;
         regionOverlay.style.display = 'none';
+        selectionRectangle.style.display = 'none'; // Скрываем прямоугольник после выбора
+        selectionRectangle.style.width = '0px'; // Сбрасываем размеры прямоугольника
+        selectionRectangle.style.height = '0px';
+         updateUI(); // Обновляем UI после выбора области
     }
+
 
     regionOverlay.addEventListener('mousedown', startRegionSelection);
     regionOverlay.addEventListener('mousemove', updateRegionSelection);
     regionOverlay.addEventListener('mouseup', endRegionSelection);
+
+    // Добавляем обработчик для отмены выбора области по клавише Esc
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && regionOverlay.style.display === 'block') {
+            e.preventDefault();
+            regionOverlay.style.display = 'none';
+            selectionRectangle.style.display = 'none'; // Скрываем прямоугольник
+            selectionStart = null;
+            selectedRegion = null; // Сбрасываем выбранную область при отмене
+            statusDisplay.textContent = 'Выбор области отменен';
+            statusDisplay.className = 'status ready';
+            videoSourceSelect.value = 'screen'; // Возвращаем источник на "Весь экран"
+             updateUI(); // Обновляем UI после отмены
+        }
+    });
+
 
     function showSettings() {
         alert("Настройки пока не реализованы.");
@@ -573,19 +682,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function showHelp() {
         alert("Справка по Веб-рекордеру экрана\n\n" +
-            "1. Выберите источник видео (экран или окно)\n" +
-            "2. Выберите разрешение (включая 4K для больших экранов) и частоту кадров, либо выберите 'Пользовательское' и введите свои значения.\n" +
-            "3. Выберите источник звука (микрофон или без звука).\n" +
+            "1. Выберите источник видео (Весь экран, Окно приложения или Произвольная область).\n" +
+            "   - Если выбрана Произвольная область, нарисуйте прямоугольник на экране для выбора области записи.\n" +
+            "2. Выберите разрешение и частоту кадров (для режимов Весь экран и Окно приложения), либо выберите 'Пользовательское' и введите свои значения.\n" +
+            "3. Выберите источник звука (микрофон или без звука). Перемещайте ползунок для настройки громкости микрофона.\n" +
             "4. Нажмите 'Начать запись' или Alt+R. Появится диалог выбора источника от браузера - выберите и подтвердите.\n" +
             "5. Для паузы нажмите 'Пауза записи' или Alt+S\n" +
             "6. Для остановки нажмите 'Остановить запись' или Alt+T. Файл будет автоматически скачан.\n\n" +
-            "Примечание: Запись системных звуков через стандартные веб-API ненадежна и может не работать.");
+            "Примечание: Запись системных звуков через стандартные веб-API ненадежна и может не работать. Запись произвольной области может работать не идеально в некоторых браузерах из-за ограничений API.");
     }
 
     function handleHotkeys(e) {
-        // Игнорируем горячие клавиши, если фокус находится на поле ввода
+        // Игнорируем горячие клавиши, если фокус находится на поле ввода или если оверлей выбора области активен
         const activeElement = document.activeElement;
-        if (activeElement.tagName === 'INPUT' || activeElement.tagName === 'SELECT' || activeElement.tagName === 'TEXTAREA') {
+        if (activeElement.tagName === 'INPUT' || activeElement.tagName === 'SELECT' || activeElement.tagName === 'TEXTAREA' || regionOverlay.style.display === 'block') {
             return;
         }
 
@@ -593,6 +703,11 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault(); // Предотвращаем стандартное поведение браузера
             switch(e.code) {
                 case 'KeyR': // Alt+R - Начать/Продолжить запись
+                     // Проверяем выбран ли режим "region" и выбрана ли область
+                     if (videoSourceSelect.value === 'region' && selectedRegion === null) {
+                        alert("Пожалуйста, сначала выберите область для записи.");
+                        return;
+                     }
                     toggleRecording();
                     break;
                 case 'KeyS': // Alt+S - Пауза записи
@@ -606,29 +721,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     break;
             }
-        } else if (e.key === 'Escape' && regionOverlay.style.display === 'block') {
-            e.preventDefault();
-            regionOverlay.style.display = 'none';
-            selectionStart = null;
         }
+        // Обработка Esc для закрытия оверлея выбора области уже добавлена отдельно
     }
 
-    // Удален старый обработчик, который выводил alert для custom
-    // resolutionSelect.addEventListener('change', function() {
-    //     if (resolutionSelect.value === 'custom') {
-    //         alert("Пользовательское разрешение пока не реализовано.");
-    //         resolutionSelect.value = '1920x1080';
-    //     }
-    // });
-
-
-    videoSourceSelect.addEventListener('change', function() {
-        if (videoSourceSelect.value === 'region') {
-            alert("Выбор произвольной области пока не реализована.");
-            showRegionSelectionOverlay();
-            videoSourceSelect.value = 'screen';
-        }
-    });
 
     // Изначально скрываем customResolutionDiv, если выбрано не 'custom'
      if (resolutionSelect.value !== 'custom') {
