@@ -51,8 +51,8 @@
                 <option value="both">Микрофон + Системные звуки (Экспериментально)</option>
             </select>
             <input type="range" id="volume" min="0" max="2" step="0.1" value="1">
-            <label for="volume">Громкость микрофона:</label> <!-- Изменен текст label -->
-            <span id="volumePercent">100%</span> <!-- Добавлен элемент для отображения процентов -->
+            <label for="volume">Громкость микрофона:</label>
+            <span id="volumePercent">100%</span>
         </div>
         <div id="timer">00:00:00</div>
         <div id="status" class="status ready">Готов к записи</div>
@@ -67,10 +67,35 @@
             <p><strong>Горячие клавиши:</strong> Alt+R (Старт/Продолжить) | Alt+S (Пауза) | Alt+T (Стоп)</p>
         </div>
     </div>
+
     <!-- Оверлей для выбора области -->
     <div id="regionSelectionOverlay" style="display: none;">
         <div id="selectionRectangle"></div>
     </div>
+
+    <!-- Модальное окно настроек -->
+    <div id="settingsModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Настройки</h2>
+            <div class="setting-item">
+                <label for="recordFormat">Формат записи:</label>
+                <select id="recordFormat">
+                    <option value="video/webm;codecs=vp9,opus">WebM (VP9 + Opus)</option>
+                    <option value="video/webm;codecs=vp8,opus">WebM (VP8 + Opus)</option>
+                    <option value="video/webm">WebM (По умолчанию)</option>
+                    <!-- Добавьте другие форматы, если планируете их поддерживать -->
+                </select>
+            </div>
+            <div class="setting-item">
+                <label for="includeSystemAudio">Включить системные звуки:</label>
+                <input type="checkbox" id="includeSystemAudio">
+            </div>
+            <!-- Здесь можно добавить другие настройки -->
+        </div>
+    </div>
+    <!-- Конец модального окна настроек -->
+
     <script src="script.js"></script>
 </body>
 </html>

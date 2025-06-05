@@ -14,6 +14,11 @@ let audioContext;
 let micGainNode;
 let micVolume = 1.0; // По умолчанию громкость 100%
 
+// Переменные для настроек
+let recordFormat = 'video/webm;codecs=vp9,opus'; // Формат записи по умолчанию
+let includeSystemAudio = false; // Включать ли системные звуки (изначально false, переопределится из HTML)
+
+
 // Ждем полной загрузки HTML документа
 document.addEventListener('DOMContentLoaded', function() {
     // Элементы DOM
@@ -38,6 +43,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const customResolutionDiv = document.getElementById('customResolutionDiv');
     const customWidthInput = document.getElementById('customWidth');
     const customHeightInput = document.getElementById('customHeight');
+
+    // Элементы модального окна настроек
+    const settingsModal = document.getElementById('settingsModal');
+    const closeButton = settingsModal.querySelector('.close-button');
+    const recordFormatSelect = document.getElementById('recordFormat');
+    const includeSystemAudioCheckbox = document.getElementById('includeSystemAudio');
+
 
     // Инициализация AudioContext
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -99,6 +111,78 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
 
+    // Логика модального окна настроек
+    function showSettings() {
+        // Загружаем текущие настройки в модальное окно
+        recordFormatSelect.value = recordFormat;
+        // Синхронизируем состояние чекбокса системных звуков с выбором в аудиоисточнике
+         includeSystemAudioCheckbox.checked = audioSourceSelect.value === 'system' || audioSourceSelect.value === 'both';
+
+        settingsModal.style.display = 'block';
+    }
+
+    function hideSettings() {
+        // Сохраняем настройки из модального окна
+        recordFormat = recordFormatSelect.value;
+        // Обновляем выбор аудиоисточника в зависимости от состояния чекбокса системных звуков
+        if (includeSystemAudioCheckbox.checked) {
+            if (audioSourceSelect.value === 'mic') {
+                 audioSourceSelect.value = 'both'; // Если был выбран только микрофон, переключаем на микрофон + системные
+            } else if (audioSourceSelect.value === 'none') {
+                audioSourceSelect.value = 'system'; // Если звука не было, переключаем на системные
+            }
+             includeSystemAudio = true;
+        } else {
+             if (audioSourceSelect.value === 'system') {
+                 audioSourceSelect.value = 'none'; // Если были выбраны только системные, отключаем звук
+             } else if (audioSourceSelect.value === 'both') {
+                audioSourceSelect.value = 'mic'; // Если были микрофон + системные, оставляем только микрофон
+             }
+             includeSystemAudio = false;
+        }
+        // Проверяем, поддерживается ли выбранный формат
+        if (!MediaRecorder.isTypeSupported(recordFormat)) {
+            alert(`Ваш браузер не поддерживает формат записи: ${recordFormat}. Будет использован формат по умолчанию.`);
+             recordFormat = 'video/webm'; // Устанавливаем формат по умолчанию, который должен поддерживаться
+             recordFormatSelect.value = recordFormat; // Обновляем выпадающий список в модальном окне
+        }
+
+
+        settingsModal.style.display = 'none';
+    }
+
+    // Закрытие модального окна при клике на крестик
+    closeButton.addEventListener('click', hideSettings);
+
+    // Закрытие модального окна при клике вне его
+    window.addEventListener('click', function(event) {
+        if (event.target === settingsModal) {
+            hideSettings();
+        }
+    });
+
+     // Синхронизируем состояние чекбокса системных звуков в настройках с выбором в аудиоисточнике при загрузке
+     includeSystemAudioCheckbox.checked = audioSourceSelect.value === 'system' || audioSourceSelect.value === 'both';
+     // Обработчик изменения чекбокса системных звуков
+     includeSystemAudioCheckbox.addEventListener('change', function() {
+         if (this.checked) {
+             if (audioSourceSelect.value === 'mic') {
+                 audioSourceSelect.value = 'both';
+            } else if (audioSourceSelect.value === 'none') {
+                audioSourceSelect.value = 'system';
+            }
+         } else {
+             if (audioSourceSelect.value === 'system') {
+                 audioSourceSelect.value = 'none';
+             } else if (audioSourceSelect.value === 'both') {
+                audioSourceSelect.value = 'mic';
+             }
+         }
+          // Также обновляем флаг в глобальной переменной
+          includeSystemAudio = this.checked;
+     });
+
+
     // Инициализация UI
     updateUI();
 
@@ -120,7 +204,7 @@ document.addEventListener('DOMContentLoaded', function() {
     async function startRecording() {
         try {
             const videoSource = videoSourceSelect.value;
-            const audioSource = audioSourceSelect.value;
+            // const audioSource = audioSourceSelect.value; // Теперь используем includeSystemAudio и audioSourceSelect
             const resolution = resolutionSelect.value;
             const fps = parseInt(fpsSelect.value);
 
@@ -131,7 +215,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Определяем параметры видеопотока
             let videoConstraints = {
                 mediaSource: videoSource === 'screen' ? 'screen' :
-                          videoSource === 'window' ? 'window' : 'screen',
+                          videoSource === 'window' ? 'window' : 'window', // Для "region" также используем "window" или "screen"
                  frameRate: { ideal: fps, max: 60 }
             };
 
@@ -140,9 +224,14 @@ document.addEventListener('DOMContentLoaded', function() {
                  // Для записи области используем выбранные размеры
                  videoConstraints.width = { ideal: selectedRegion.width };
                  videoConstraints.height = { ideal: selectedRegion.height };
-                 // Указываем координаты начальной точки захвата (экспериментально и может не поддерживаться всеми браузерами)
-                 // Добавление cropTo: selectedRegion может помочь, но поддержка ограничена.
-                 // videoConstraints.cropTo = selectedRegion; // Экспериментальная опция
+                 // Экспериментальная опция cropTo (может не поддерживаться)
+                  videoConstraints.cropTo = {
+                     x: selectedRegion.x,
+                     y: selectedRegion.y,
+                     width: selectedRegion.width,
+                     height: selectedRegion.height
+                  };
+
             } else if (resolution === 'custom') {
                 const customWidth = parseInt(customWidthInput.value);
                 const customHeight = parseInt(customHeightInput.value);
@@ -179,60 +268,30 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
 
+             // Определяем аудио констрейнты в зависимости от выбранного аудио источника
+             let audioConstraints = false;
+             if (audioSourceSelect.value === 'system' || audioSourceSelect.value === 'both') {
+                audioConstraints = true; // Запрашиваем системные звуки
+             }
+
+
             const displayMediaConstraints = {
                 video: videoConstraints,
-                audio: audioSource === 'system' || audioSource === 'both'
+                 audio: audioConstraints // Используем определенные аудио констрейнты
             };
 
 
-            console.log("Запрашиваем доступ к экрану с параметрами:", displayMediaConstraints);
+            console.log("Запрашиваем доступ к медиа с параметрами:", displayMediaConstraints);
             const screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaConstraints)
                 .catch(err => {
                     console.error("Ошибка getDisplayMedia:", err);
                     throw err;
                 });
 
-             // Если выбран режим "region", нам нужно обрезать поток
-             let finalVideoStream = screenStream.getVideoTracks()[0];
-             if (videoSource === 'region' && selectedRegion) {
-                 // ВАЖНО: Обрезка потока на стороне браузера (с помощью cropTo) очень ограничена в поддержке.
-                 // Более надежный подход - обработка после записи или использование более низкоуровневых API, если доступно.
-                 // Текущая реализация getDisplayMedia с cropTo может не работать как ожидается.
-                 // Для демонстрации добавим опцию, но имейте в виду ограничения.
-                  if (finalVideoStream && 'cropTo' in finalVideoStream.getSettings()) {
-                      try {
-                           await finalVideoStream.applyConstraints({
-                              advanced: [{
-                                  cropTo: {
-                                     x: selectedRegion.x,
-                                     y: selectedRegion.y,
-                                     width: selectedRegion.width,
-                                     height: selectedRegion.height
-                                  }
-                              }]
-                           });
-                           console.log("Применены ограничения обрезки к видеодорожке.");
-                      } catch (applyError) {
-                           console.warn("Не удалось применить ограничения обрезки:", applyError);
-                           alert("Внимание: Браузер не поддерживает точную запись выбранной области. Будет записан весь экран.");
-                           selectedRegion = null; // Сбрасываем выбранную область, чтобы не вводить пользователя в заблуждение
-                           videoSourceSelect.value = 'screen'; // Возвращаем источник на "Весь экран"
-                           updateUI(); // Обновляем интерфейс
-                      }
-                  } else {
-                      console.warn("Браузер не поддерживает обрезку потока (cropTo). Будет записан весь экран.");
-                      alert("Внимание: Ваш браузер не поддерживает запись выбранной области. Будет записан весь экран.");
-                      selectedRegion = null; // Сбрасываем выбранную область
-                      videoSourceSelect.value = 'screen'; // Возвращаем источник на "Весь экран"
-                       updateUI(); // Обновляем интерфейс
-                  }
-            }
-
-
-            // Проверка видеодорожки после возможной обрезки
-            const videoTracks = screenStream.getVideoTracks();
-            if (videoTracks.length === 0) {
-                throw new Error("Не удалось получить видеодорожку после попытки обрезки");
+             // Проверяем успешность получения видеодорожки
+             const videoTracks = screenStream.getVideoTracks();
+             if (videoTracks.length === 0) {
+                 throw new Error("Не удалось получить видеодорожку.");
             }
 
             // Добавляем обработчик для отслеживания состояния видеодорожки
@@ -241,9 +300,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 stopRecording();
             });
 
+
             // 2. Получаем аудиопоток с микрофона, если нужно
             let micStream = null;
-            if ((audioSource === 'mic' || audioSource === 'both') && navigator.mediaDevices.getUserMedia) {
+            if ((audioSourceSelect.value === 'mic' || audioSourceSelect.value === 'both') && navigator.mediaDevices.getUserMedia) {
                 try {
                     console.log("Запрашиваем доступ к микрофону...");
                     const originalMicStream = await navigator.mediaDevices.getUserMedia({
@@ -285,13 +345,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Добавляем обработчик для отслеживания состояния аудиодорожки
                     originalMicStream.getAudioTracks()[0].addEventListener('ended', () => {
                         console.log("Аудиодорожка микрофона завершена");
-                        if (audioSource === 'mic') {
+                         // Если системные звуки не включены, останавливаем запись
+                        if (audioSourceSelect.value === 'mic') {
                             stopRecording();
                         }
                     });
                 } catch (audioError) {
                     console.warn("Не удалось получить доступ к микрофону:", audioError);
-                    if (audioSource === 'mic') {
+                     // Если был выбран только микрофон, выбрасываем ошибку
+                    if (audioSourceSelect.value === 'mic') {
                         throw audioError;
                     }
                 }
@@ -299,8 +361,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // 3. Создаем объединенный поток
             const combinedStream = new MediaStream();
-            // Добавляем видеодорожку (теперь это может быть обрезанная дорожка)
-            combinedStream.addTrack(finalVideoStream);
+            // Добавляем видеодорожку
+            combinedStream.addTrack(videoTracks[0]); // Используем полученную видеодорожку
 
             // Добавляем аудиодорожки микрофона (если есть)
             if (micStream) {
@@ -310,17 +372,26 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             // Добавляем системные звуки (если есть и запрошены)
-            if ((audioSource === 'system' || audioSource === 'both') && screenStream.getAudioTracks().length > 0) {
+            if ((audioSourceSelect.value === 'system' || audioSourceSelect.value === 'both') && screenStream.getAudioTracks().length > 0) {
                 screenStream.getAudioTracks().forEach(track => {
                     combinedStream.addTrack(track);
                     track.addEventListener('ended', () => {
                         console.log("Аудиодорожка системных звуков завершена");
-                        if (audioSource === 'system') {
+                        // Если включены только системные звуки, останавливаем запись
+                        if (audioSourceSelect.value === 'system') {
                             stopRecording();
                         }
                     });
                 });
+            } else if ((audioSourceSelect.value === 'system' || audioSourceSelect.value === 'both') && screenStream.getAudioTracks().length === 0) {
+                 console.warn("Системные звуки запрошены, но не получены.");
+                 // Если системные звуки запрошены, но не получены, и нет микрофона, выдаем предупреждение или ошибку
+                 if (audioSourceSelect.value === 'system' || (audioSourceSelect.value === 'both' && !micStream)) {
+                     alert("Не удалось получить доступ к системным звукам. Запись будет без звука или только с микрофона.");
+                     // Можно обновить статус или аудиоисточник в UI
+                 }
             }
+
 
             // Проверяем, что есть хотя бы одна активная дорожка
             if (combinedStream.getTracks().length === 0) {
@@ -333,12 +404,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
             // 4. Проверяем поддерживаемые форматы
-            const mimeType = [
-                'video/webm;codecs=vp9,opus',
-                'video/webm;codecs=vp8,opus',
-                'video/webm'
-            ].find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
+            // const mimeType = [
+            //     'video/webm;codecs=vp9,opus',
+            //     'video/webm;codecs=vp8,opus',
+            //     'video/webm'
+            // ].find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
+             // Используем формат, выбранный в настройках
+            const mimeType = MediaRecorder.isTypeSupported(recordFormat) ? recordFormat : 'video/webm';
+            if (mimeType !== recordFormat) {
+                 console.warn(`Выбранный формат ${recordFormat} не поддерживается, используется ${mimeType}.`);
+            }
             console.log(`Используем MIME type: ${mimeType}`);
+
 
             // 5. Создаем MediaRecorder
             recordedChunks = [];
@@ -567,8 +644,12 @@ document.addEventListener('DOMContentLoaded', function() {
         fpsSelect.disabled = isActivelyRecording || videoSourceSelect.value === 'region';
         audioSourceSelect.disabled = isActivelyRecording;
         volumeSlider.disabled = isActivelyRecording;
+        // Отключаем поля пользовательского разрешения
         customWidthInput.disabled = isActivelyRecording || resolutionSelect.value !== 'custom' || videoSourceSelect.value === 'region';
         customHeightInput.disabled = isActivelyRecording || resolutionSelect.value !== 'custom' || videoSourceSelect.value === 'region';
+
+        // Отключаем кнопку настроек во время записи
+        btnSettings.disabled = isActivelyRecording;
 
 
         if (!isRecording) {
@@ -676,9 +757,9 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
 
-    function showSettings() {
-        alert("Настройки пока не реализованы.");
-    }
+    // function showSettings() {
+    //     alert("Настройки пока не реализованы.");
+    // } // Эта функция теперь реализована выше
 
     function showHelp() {
         alert("Справка по Веб-рекордеру экрана\n\n" +
@@ -695,7 +776,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function handleHotkeys(e) {
         // Игнорируем горячие клавиши, если фокус находится на поле ввода или если оверлей выбора области активен
         const activeElement = document.activeElement;
-        if (activeElement.tagName === 'INPUT' || activeElement.tagName === 'SELECT' || activeElement.tagName === 'TEXTAREA' || regionOverlay.style.display === 'block') {
+        if (activeElement.tagName === 'INPUT' || activeElement.tagName === 'SELECT' || activeElement.tagName === 'TEXTAREA' || regionOverlay.style.display === 'block' || settingsModal.style.display === 'block') {
             return;
         }
 
@@ -723,6 +804,11 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         // Обработка Esc для закрытия оверлея выбора области уже добавлена отдельно
+         // Добавляем обработку Esc для закрытия модального окна настроек
+         if (e.key === 'Escape' && settingsModal.style.display === 'block') {
+             e.preventDefault();
+             hideSettings();
+         }
     }
 
 
