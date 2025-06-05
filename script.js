@@ -480,8 +480,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     micSource.connect(micGainNode);
                     micGainNode.connect(analyser); // Подключаем GainNode к AnalyserNode
-                    analyser.connect(audioContext.destination); // Подключаем AnalyserNode к выходному узлу AudioContext
-
+                    
                     // Создаем пункт назначения для обработанного аудио для MediaRecorder
                     const dest = audioContext.createMediaStreamDestination();
                     micGainNode.connect(dest); // Подключаем GainNode к MediaStreamDestination
