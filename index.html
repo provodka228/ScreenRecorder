@@ -9,7 +9,6 @@
 <body>
     <div class="container">
         <h1>Веб-рекордер экрана</h1>
-
         <div class="control-group">
             <label for="videoSource">Источник видео:</label>
             <select id="videoSource">
@@ -17,7 +16,6 @@
                 <option value="window">Окно приложения</option>
                 <option value="region">Произвольная область</option>
             </select>
-
             <label for="resolution">Разрешение:</label>
             <select id="resolution">
                 <option value="640x480">640x480</option>
@@ -26,7 +24,6 @@
                 <option value="3840x2160">4K (3840x2160)</option>
                 <option value="custom">Пользовательское...</option>
             </select>
-
             <label for="fps">Кадров в секунду (FPS):</label>
             <select id="fps">
                 <option value="24">24</option>
@@ -34,6 +31,15 @@
                 <option value="60">60</option>
             </select>
         </div>
+
+        <!-- Добавленные элементы для пользовательского разрешения -->
+        <div id="customResolutionDiv" style="display: none;">
+            <label for="customWidth">Ширина:</label>
+            <input type="number" id="customWidth" value="1920" min="1">
+            <label for="customHeight">Высота:</label>
+            <input type="number" id="customHeight" value="1080" min="1">
+        </div>
+        <!-- Конец добавленных элементов -->
 
         <div class="control-group">
             <label for="audioSource">Источник аудио:</label>
@@ -44,33 +50,26 @@
                 <option value="system">Системные звуки (Экспериментально)</option>
                 <option value="both">Микрофон + Системные звуки (Экспериментально)</option>
             </select>
-
             <input type="range" id="volume" min="0" max="2" step="0.1" value="1">
             <label for="volume">Громкость микрофона (0-200%)</label>
         </div>
-
         <div id="timer">00:00:00</div>
         <div id="status" class="status ready">Готов к записи</div>
-
         <video id="preview" controls style="display: none;"></video>
-
         <div class="button-group">
             <button id="btnStart">Начать запись</button>
             <button id="btnStop" disabled>Остановить запись</button>
             <button id="btnSettings">Настройки</button>
             <button id="btnHelp">Справка</button>
         </div>
-
         <div class="hotkey-info">
             <p><strong>Горячие клавиши:</strong> Alt+R (Старт/Продолжить) | Alt+S (Пауза) | Alt+T (Стоп)</p>
         </div>
     </div>
-
     <!-- Оверлей для выбора области -->
     <div id="regionSelectionOverlay" style="display: none;">
         <div id="selectionRectangle"></div>
     </div>
-
     <script src="script.js"></script>
 </body>
 </html>
