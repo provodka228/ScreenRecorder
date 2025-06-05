@@ -5,8 +5,109 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Web Screen Recorder</title>
     <link rel="stylesheet" href="style.css">
+    <style>
+        /* Basic styles for the modal - you might already have these in style.css */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 10; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto; /* 15% from the top and centered */
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%; /* Could be more or less, depending on screen size */
+            max-width: 500px; /* Max width */
+            border-radius: 8px;
+            position: relative;
+        }
+
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .setting-item {
+            margin-bottom: 15px;
+        }
+
+        .setting-item label {
+            display: inline-block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            width: 200px; /* Fixed width for alignment */
+        }
+
+         .setting-item input[type="checkbox"] {
+             vertical-align: middle;
+         }
+
+        /* Styles for the countdown timer */
+        #countdownTimer {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 8em;
+            color: red;
+            z-index: 100; /* Ensure it's on top */
+            display: none; /* Hidden by default */
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5); /* For better visibility */
+        }
+
+        /* Styles for the mouse click visualization container */
+        #clickVisualizations {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Important: Allows clicks to pass through */
+            z-index: 2; /* Above main content, below region selection and countdown */
+            display: none; /* Hidden by default */
+        }
+
+        /* Styles for the audio level indicator */
+        #audioLevelIndicator {
+            width: 50px;
+            height: 10px;
+            background-color: #eee; /* Light grey background */
+            margin-left: 10px;
+            display: inline-block;
+            vertical-align: middle;
+            border: 1px solid #ccc; /* Border */
+            border-radius: 3px;
+            overflow: hidden; /* Clip the bar within the bounds */
+        }
+
+        #audioLevelBar {
+            width: 0%; /* Initial width */
+            height: 100%;
+            background-color: green; /* Initial color */
+            transition: width 0.1s ease-out; /* Smooth width transition */
+        }
+
+    </style>
 </head>
 <body>
+
     <div class="container">
         <h1>Веб-рекордер экрана</h1>
         <div class="control-group">
@@ -54,14 +155,14 @@
             <label for="volume">Громкость микрофона:</label>
             <span id="volumePercent">100%</span>
             <!-- Добавлен индикатор уровня звука микрофона -->
-            <div id="audioLevelIndicator" style="width: 50px; height: 10px; background-color: grey; margin-left: 10px; display: inline-block; vertical-align: middle;">
-                 <div id="audioLevelBar" style="width: 0%; height: 100%; background-color: green;"></div>
+            <div id="audioLevelIndicator">
+                 <div id="audioLevelBar"></div>
             </div>
              <!-- Конец индикатора -->
         </div>
 
         <!-- Добавлен элемент для таймера обратного отсчета -->
-        <div id="countdownTimer" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 8em; color: red; z-index: 100; display: none;"></div>
+        <div id="countdownTimer"></div>
         <!-- Конец элемента таймера -->
 
         <div id="timer">00:00:00</div>
@@ -84,11 +185,11 @@
     </div>
 
     <!-- Контейнер для визуализации кликов мыши -->
-     <div id="clickVisualizations" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2;"></div>
+     <div id="clickVisualizations"></div>
     <!-- Конец контейнера для кликов -->
 
     <!-- Модальное окно настроек -->
-    <div id="settingsModal" class="modal" style="display: none;">
+    <div id="settingsModal" class="modal">
         <div class="modal-content">
             <span class="close-button">&times;</span>
             <h2>Настройки</h2>
