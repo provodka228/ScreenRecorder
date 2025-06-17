@@ -5,7 +5,7 @@ body {
     color: #333; /* Цвет текста для контраста с фоном */
 
     /* Добавленные стили для фонового изображения */
-    background-image: url('https://newtort.ru/wp-content/uploads/2023/11/20230912_195312.jpg'); /* Используем вашу ссылку */
+    background-image: url('https://newtort.ru/wp-content/uploads/2023/08/20230802_165852.jpg'); /* Используем вашу ссылку */
     background-repeat: no-repeat; /* Изображение не будет повторяться */
     background-position: center center; /* Центрировать изображение */
     background-size: cover; /* Растянуть изображение, чтобы оно покрыло весь фон */
